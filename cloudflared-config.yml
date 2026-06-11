@@ -1,0 +1,7 @@
+tunnel: video-translation
+credentials-file: /home/ytc/.cloudflared/b88a940b-f6a1-4605-975c-cbb939ce74b2.json
+
+ingress:
+  - path: /api/*
+    service: http://localhost:3001
+  - service: http://localhost:5173

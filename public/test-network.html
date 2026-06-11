@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公网访问测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #17a2b8;
+            color: #0c5460;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        .checklist li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .checklist li::before {
+            content: "⬜ ";
+            margin-right: 8px;
+        }
+        .checklist li.done::before {
+            content: "✅ ";
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 公网访问测试</h1>
+        
+        <div class="test-section">
+            <h2>当前连接信息</h2>
+            <div id="connection-info" class="status info">
+                正在检测连接信息...
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>后端 API 连接测试</h2>
+            <button onclick="testBackendAPI()">测试后端连接</button>
+            <div id="backend-result" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>部署检查清单</h2>
+            <ul class="checklist" id="checklist">
+                <li id="check-frontend">前端服务运行在端口 5173</li>
+                <li id="check-backend">后端服务运行在端口 3001</li>
+                <li id="check-firewall">Windows 防火墙已配置</li>
+                <li id="check-router">路由器端口转发已配置</li>
+                <li id="check-env">环境变量已配置</li>
+                <li id="check-public">公网访问测试通过</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>下一步操作</h2>
+            <ol>
+                <li>以管理员身份运行 <code>setup-firewall.ps1</code> 配置防火墙</li>
+                <li>登录路由器管理界面（192.168.19.151）配置端口转发</li>
+                <li>修改 <code>.env</code> 文件，设置正确的公网 IP</li>
+                <li>重新构建前端：<code>npm run build</code></li>
+                <li>重启服务并测试公网访问</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // 显示当前连接信息
+        function showConnectionInfo() {
+            const info = {
+                '当前 URL': window.location.href,
+                '协议': window.location.protocol,
+                '主机': window.location.host,
+                '主机名': window.location.hostname,
+                '端口': window.location.port || (window.location.protocol === 'https:' ? '443' : '80'),
+                '后端 API 地址': localStorage.getItem('apiUrl') || 'http://localhost:3001'
+            };
+
+            let html = '<strong>连接信息：</strong><br>';
+            for (const [key, value] of Object.entries(info)) {
+                html += `${key}: ${value}<br>`;
+            }
+            document.getElementById('connection-info').innerHTML = html;
+        }
+
+        // 测试后端 API
+        async function testBackendAPI() {
+            const resultDiv = document.getElementById('backend-result');
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = '正在连接后端 API...';
+            resultDiv.className = 'result';
+
+            try {
+                const response = await fetch('http://localhost:3001/api/health', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.textContent = '✅ 后端连接成功！\n\n' + JSON.stringify(data, null, 2);
+                    resultDiv.className = 'result success';
+                    markChecklistItem('check-backend', true);
+                } else {
+                    resultDiv.textContent = `❌ 后端返回错误：${response.status} ${response.statusText}`;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.textContent = `❌ 后端连接失败：${error.message}\n\n请确保：\n1. 后端服务正在运行\n2. 防火墙允许端口 3001 访问\n3. 如果从公网访问，请确保路由器端口转发已配置`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        // 标记检查清单项目
+        function markChecklistItem(id, done) {
+            const item = document.getElementById(id);
+            if (done) {
+                item.classList.add('done');
+            } else {
+                item.classList.remove('done');
+            }
+        }
+
+        // 初始化检查
+        function initChecks() {
+            // 检查前端服务
+            markChecklistItem('check-frontend', true);
+            
+            // 检查后端服务（自动测试）
+            setTimeout(() => {
+                testBackendAPI();
+            }, 1000);
+        }
+
+        // 页面加载时执行
+        window.onload = function() {
+            showConnectionInfo();
+            initChecks();
+        };
+    </script>
+</body>
+</html>

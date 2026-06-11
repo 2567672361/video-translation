@@ -1,0 +1,55 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Model files & large binaries
+.omo/
+k2transducer-zipformer-large-zh-onnx-online-yuekai-20250630/
+backend/hy_mt1.5_model/
+backend/wsl_venv/
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+ffmpeg.zip
+ngrok-v3-stable-linux-amd64.tgz
+ngrok-v3-stable-linux-amd64.tgz.1
+*.pptx
+~$*
+
+# Backups
+backups/
+backup-system.ps1
+restore-system.ps1
+
+# Uploads & output
+backend/uploads/
+backend/output/
+
+# Test reports
+backend/test-report.json
