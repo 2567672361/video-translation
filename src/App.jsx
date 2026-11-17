@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import VideoStudio from './components/VideoStudio'
-import VoiceTranslation from './components/VoiceTranslation'
-
-const PAGES = [
-  { id: 'video', index: '01', label: '视频翻译' },
-  { id: 'voice', index: '02', label: '实时字幕' },
-]
 
 /** 顶栏时间码：让界面有一点“正在录制”的现场感，不影响功能 */
 function useTimecode() {
@@ -41,7 +35,6 @@ function readInitialTheme() {
 }
 
 function App() {
-  const [activePage, setActivePage] = useState('video')
   const [theme, setTheme] = useState(readInitialTheme)
   const timecode = useTimecode()
 
@@ -61,21 +54,6 @@ function App() {
           </div>
         </div>
 
-        <nav className="tabs" role="tablist" aria-label="工作台页面">
-          {PAGES.map((page) => (
-            <button
-              key={page.id}
-              type="button"
-              role="tab"
-              aria-selected={activePage === page.id}
-              className="tab"
-              onClick={() => setActivePage(page.id)}
-            >
-              <span className="tab-index">{page.index}</span>
-              {page.label}
-            </button>
-          ))}
-        </nav>
 
         <div className="topbar-tools">
           <span className="rec-timecode" aria-hidden="true">
@@ -123,13 +101,7 @@ function App() {
       </header>
 
       <div className="shell-body">
-        {activePage === 'video' ? (
-          <VideoStudio />
-        ) : (
-          <div className="voice-stage rise">
-            <VoiceTranslation />
-          </div>
-        )}
+        <VideoStudio />
       </div>
 
       <footer className="statusbar">

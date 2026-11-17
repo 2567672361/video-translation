@@ -171,6 +171,10 @@ function VideoStudio() {
     [],
   )
 
+  const openPicker = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
+
   const resetFile = useCallback(() => {
     setVideoFile(null)
     setPreviewUrl((previous) => {
@@ -402,11 +406,16 @@ function VideoStudio() {
               )}
             </>
           ) : (
-            <label
+            <div
               className="frame-empty"
-              onClick={(event) => {
-                event.preventDefault()
-                inputRef.current?.click()
+              role="button"
+              tabIndex={0}
+              onClick={openPicker}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  openPicker()
+                }
               }}
             >
               <span className="drop-icon" aria-hidden="true">
@@ -414,17 +423,21 @@ function VideoStudio() {
               </span>
               <span className="drop-title">拖拽视频到这里</span>
               <span className="drop-hint">或点击选择文件 · MP4 / MOV / WebM</span>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="video/*"
-                className="visually-hidden"
-                onChange={(event) => acceptFile(event.target.files?.[0])}
-                required
-              />
-            </label>
+              <span className="drop-action">选择文件</span>
+            </div>
           )}
         </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/*"
+          className="visually-hidden"
+          onChange={(event) => {
+            acceptFile(event.target.files?.[0])
+            event.target.value = ''
+          }}
+        />
 
         {videoFile && (
           <div className="file-meta">

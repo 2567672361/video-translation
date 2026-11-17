@@ -602,11 +602,6 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// 导入语音翻译API
-const voiceTranslation = require('./voice-translation');
-app.use(voiceTranslation.router);
-voiceTranslation.setupWebSocket(app);
-
 // 提供前端静态文件
 app.use(express.static('../dist'));
 
