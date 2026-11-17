@@ -1,393 +1,143 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
+import VideoStudio from './components/VideoStudio'
 import VoiceTranslation from './components/VoiceTranslation'
 
-function App() {
-  // 后端 API 地址 - 使用环境变量或配置为公网 IP
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
-  
-  // 导航状态
-  const [activePage, setActivePage] = useState('video') // 'video' 或 'voice'
-  
-  const [videoFile, setVideoFile] = useState(null)
-  const [sourceLanguage, setSourceLanguage] = useState('auto')
-  const [targetLanguage, setTargetLanguage] = useState('zh')
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [currentStep, setCurrentStep] = useState('')
-  const [error, setError] = useState(null)
-  const [result, setResult] = useState(null)
-  const [ws, setWs] = useState(null)
-  const [useProofreading, setUseProofreading] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState(null)
-  
-  // 字幕样式设置
-  const [subtitleStyle, setSubtitleStyle] = useState({
-    fontName: 'WenQuanYi Micro Hei',
-    fontSize: 24,
-    fontColor: '#FFFFFF',
-    position: 'bottom'
-  })
+const PAGES = [
+  { id: 'video', index: '01', label: '视频翻译' },
+  { id: 'voice', index: '02', label: '实时字幕' },
+]
 
-  // 字幕样式展开状态
-  const [subtitleStyleExpanded, setSubtitleStyleExpanded] = useState(false)
+/** 顶栏时间码：让界面有一点“正在录制”的现场感，不影响功能 */
+function useTimecode() {
+  const [timecode, setTimecode] = useState('00:00:00:00')
 
-  // 拖拽上传相关状态
-  const [isDragging, setIsDragging] = useState(false)
-
-  // 深色模式状态
-  const [darkMode, setDarkMode] = useState(false)
-
-  // 拖拽事件处理函数
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = () => {
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    setIsDragging(false)
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileChange({ target: { files: e.dataTransfer.files } })
-    }
-  }
-
-  // 建立WebSocket连接
   useEffect(() => {
-    // 连接进度推送 WebSocket 路由
-    const wsUrl = API_URL.replace('http', 'ws') + '/ws/progress'
-    const socket = new WebSocket(wsUrl)
-    
-    socket.onopen = () => {
-      console.log('WebSocket连接已建立')
+    const started = Date.now()
+    const tick = () => {
+      const elapsed = Date.now() - started
+      const totalSeconds = Math.floor(elapsed / 1000)
+      const pad = (n) => String(n).padStart(2, '0')
+      const frames = Math.floor((elapsed % 1000) / 42) // 约 24fps
+      setTimecode(
+        `${pad(Math.floor(totalSeconds / 3600))}:${pad(Math.floor((totalSeconds % 3600) / 60))}:${pad(
+          totalSeconds % 60,
+        )}:${pad(frames)}`,
+      )
     }
-    
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === 'progress') {
-          setCurrentStep(data.step)
-          setProgress(data.progress)
-        }
-      } catch (error) {
-        console.error('解析WebSocket消息失败:', error)
-      }
-    }
-    
-    socket.onclose = () => {
-      console.log('WebSocket连接已关闭')
-    }
-    
-    socket.onerror = (error) => {
-      console.error('WebSocket错误:', error)
-    }
-    
-    setWs(socket)
-    
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close()
-      }
-    }
-  }, [API_URL])
+    tick()
+    const id = window.setInterval(tick, 125)
+    return () => window.clearInterval(id)
+  }, [])
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    setVideoFile(file)
-    
-    // 生成预览URL
-    if (file) {
-      const url = URL.createObjectURL(file)
-      setPreviewUrl(url)
-    } else {
-      setPreviewUrl(null)
-    }
-  }
+  return timecode
+}
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!videoFile) return
-    
-    setIsProcessing(true)
-    setProgress(0)
-    setCurrentStep('准备上传')
-    setError(null)
-    setResult(null)
-    
-    try {
-      const formData = new FormData()
-      formData.append('video', videoFile)
-      formData.append('sourceLanguage', sourceLanguage)
-      formData.append('targetLanguage', targetLanguage)
-      formData.append('useProofreading', useProofreading.toString())
-      formData.append('subtitleStyle', JSON.stringify(subtitleStyle))
-      
-      const response = await fetch(`${API_URL}/api/translate-video`, {
-        method: 'POST',
-        body: formData
-      })
-      
-      if (!response.ok) {
-        let errorMsg = 'API request failed'
-        try {
-          const errorData = await response.json()
-          errorMsg = errorData.error || errorMsg
-        } catch (e) {
-          errorMsg = `HTTP ${response.status}: ${response.statusText}`
-        }
-        throw new Error(errorMsg)
-      }
-      
-      const data = await response.json()
-      setResult(data)
-      setCurrentStep('处理完成')
-      setProgress(100)
-    } catch (error) {
-      console.error('Error:', error)
-      setError(`翻译失败: ${error.message}`)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
+function readInitialTheme() {
+  if (typeof window === 'undefined') return 'dark'
+  const stored = window.localStorage.getItem('studio-theme')
+  if (stored === 'light' || stored === 'dark') return stored
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
+function App() {
+  const [activePage, setActivePage] = useState('video')
+  const [theme, setTheme] = useState(readInitialTheme)
+  const timecode = useTimecode()
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    window.localStorage.setItem('studio-theme', theme)
+  }, [theme])
 
   return (
-    <div className={`app ${darkMode ? 'dark-mode' : ''}`}>
-      <header className="header">
-        <div className="header-content">
-          <h1>视频翻译</h1>
-          <div className="nav-tabs">
-            <button 
-              className={`nav-tab ${activePage === 'video' ? 'active' : ''}`}
-              onClick={() => setActivePage('video')}
-            >
-              视频翻译
-            </button>
-            <button 
-              className={`nav-tab ${activePage === 'voice' ? 'active' : ''}`}
-              onClick={() => setActivePage('voice')}
-            >
-              语音翻译
-            </button>
+    <div className="shell">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <div>
+            <p className="brand-title">字幕工作台</p>
+            <p className="brand-sub">Subtitle Workbench</p>
           </div>
-          <button 
-            className="dark-mode-toggle"
-            onClick={() => setDarkMode(!darkMode)}
-            aria-label={darkMode ? '切换到亮色模式' : '切换到深色模式'}
+        </div>
+
+        <nav className="tabs" role="tablist" aria-label="工作台页面">
+          {PAGES.map((page) => (
+            <button
+              key={page.id}
+              type="button"
+              role="tab"
+              aria-selected={activePage === page.id}
+              className="tab"
+              onClick={() => setActivePage(page.id)}
+            >
+              <span className="tab-index">{page.index}</span>
+              {page.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="topbar-tools">
+          <span className="rec-timecode" aria-hidden="true">
+            <span className="rec-dot" />
+            TC {timecode}
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label={theme === 'dark' ? '切换到纸面浅色主题' : '切换到放映厅深色主题'}
+            title={theme === 'dark' ? '切换到纸面浅色主题' : '切换到放映厅深色主题'}
           >
-            {darkMode ? '☀️' : '🌙'}
+            {theme === 'dark' ? (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20.5 14.8A8.6 8.6 0 0 1 9.2 3.5a8.6 8.6 0 1 0 11.3 11.3Z" />
+              </svg>
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4.2" />
+                <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6" />
+              </svg>
+            )}
           </button>
         </div>
       </header>
 
-      <main className="main">
+      <div className="shell-body">
         {activePage === 'video' ? (
-          <>
-            <form onSubmit={handleSubmit} className="upload-form">
-              <div 
-                className={`form-group ${isDragging ? 'drag-active' : ''}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <label htmlFor="video-upload">上传视频</label>
-                <div className="file-upload-area">
-                  <input
-                    type="file"
-                    id="video-upload"
-                    accept="video/*"
-                    onChange={handleFileChange}
-                    required
-                  />
-                  <div className="drag-hint">
-                    {isDragging ? '松开文件上传' : '或将文件拖拽到此处'}
-                  </div>
-                  {videoFile && (
-                    <p className="file-name">{videoFile.name}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="source-language">源语言</label>
-                <select
-                  id="source-language"
-                  value={sourceLanguage}
-                  onChange={(e) => setSourceLanguage(e.target.value)}
-                >
-                  <option value="auto">自动检测</option>
-                  <option value="en">英语</option>
-                  <option value="zh">中文</option>
-                  <option value="ja">日语</option>
-                  <option value="ko">韩语</option>
-                  <option value="fr">法语</option>
-                  <option value="de">德语</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="target-language">目标语言</label>
-                <select
-                  id="target-language"
-                  value={targetLanguage}
-                  onChange={(e) => setTargetLanguage(e.target.value)}
-                >
-                  <option value="zh">中文</option>
-                  <option value="en">英语</option>
-                  <option value="ja">日语</option>
-                  <option value="ko">韩语</option>
-                  <option value="fr">法语</option>
-                  <option value="de">德语</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={false}
-                    disabled={true}
-                    onChange={() => {}}
-                  />
-                  使用翻译校准（提高翻译质量）
-                  <span className="feature-disabled">（功能暂时禁用，等待后续完善）</span>
-                </label>
-                <p className="style-disabled">翻译校准功能暂时禁用，使用标准翻译流程</p>
-              </div>
-
-              {/* 字幕样式设置 */}
-              <div className="form-group">
-                <div className="subtitle-style-header" onClick={() => setSubtitleStyleExpanded(!subtitleStyleExpanded)}>
-                  <label>字幕样式</label>
-                  <span className={`expand-icon ${subtitleStyleExpanded ? 'expanded' : ''}`}>
-                    {subtitleStyleExpanded ? '▼' : '▶'}
-                  </span>
-                </div>
-                {subtitleStyleExpanded && (
-                  <div className="subtitle-style-content">
-                    <div className="subtitle-style-options">
-                      <div className="style-option">
-                        <p className="style-disabled">字幕样式设置功能暂时禁用，使用默认样式</p>
-                      </div>
-                    </div>
-                    
-                    {/* 字体样式预览 */}
-                    <div className="font-preview">
-                      <label>预览</label>
-                      <div 
-                        className="preview-text"
-                        style={{
-                          fontFamily: 'WenQuanYi Micro Hei',
-                          fontSize: '24px',
-                          color: '#FFFFFF',
-                          backgroundColor: 'rgba(0,0,0,0.8)',
-                          padding: '10px',
-                          borderRadius: '4px',
-                          textAlign: 'center'
-                        }}
-                      >
-                        这是字幕预览效果
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-
-
-              {isProcessing && (
-                <div className="progress-container">
-                  <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
-                      style={{ width: `${progress}%` }}
-                    ></div>
-                  </div>
-                  <p className="progress-text">{currentStep}... {progress}%</p>
-                </div>
-              )}
-              {error && (
-                <div className="error-message">
-                  {error}
-                </div>
-              )}
-              <button 
-                type="submit" 
-                className="submit-button"
-                disabled={isProcessing}
-              >
-                {isProcessing ? '处理中...' : '开始翻译'}
-              </button>
-            </form>
-
-            {result && (
-              <div className="result-section">
-                <h2>翻译完成</h2>
-                
-                {/* 步骤状态显示 */}
-                {result.steps && result.steps.length > 0 && (
-                  <div className="steps-section">
-                    <h3>处理步骤状态</h3>
-                    <div className="steps-list">
-                      {result.steps.map((step, index) => (
-                        <div key={index} className={`step-item step-${step.status}`}>
-                          <div className="step-header">
-                            <span className="step-name">{step.name}</span>
-                            <span className={`step-status ${step.status}`}>
-                              {step.status === 'success' ? '✅' : step.status === 'failed' ? '❌' : step.status === 'partial_success' ? '⚠️' : '⏳'}
-                              {step.status}
-                            </span>
-                          </div>
-                          <div className="step-message">{step.message}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="video-preview-section">
-                  <h3>翻译后视频预览</h3>
-                  <div className="video-preview">
-                    <video
-                      src={`${API_URL}${result.videoUrl.replace('/uploads/', '/preview/')}`}
-                      controls
-                      width="100%"
-                      maxHeight="400px"
-                      className="preview-video"
-                      onError={(e) => {
-                        console.error('视频加载失败:', e);
-                        alert('视频预览加载失败，请尝试下载视频');
-                      }}
-                    />
-                  </div>
-                  <p className="preview-note">如果预览无法播放，请直接下载视频查看</p>
-                </div>
-                
-                <div className="download-section">
-                  <h3>下载视频</h3>
-                  <p>视频翻译已完成，请下载：</p>
-                  <a 
-                    href={`${API_URL}${result.videoUrl}`} 
-                    download
-                    className="download-button"
-                  >
-                    下载翻译后视频
-                  </a>
-                </div>
-              </div>
-            )}
-          </>
+          <VideoStudio />
         ) : (
-          <VoiceTranslation />
+          <div className="voice-stage rise">
+            <VoiceTranslation />
+          </div>
         )}
-      </main>
+      </div>
 
-      <footer className="footer">
-        <p>© 2026 视频翻译网站</p>
+      <footer className="statusbar">
+        <span className="statusbar-status">
+          <span className="status-dot" />
+          AI 视频翻译系统 · 工作台界面
+        </span>
+        <span>Vite · React 19 — 2026</span>
       </footer>
     </div>
   )

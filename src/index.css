@@ -1,167 +1,198 @@
+/**
+ * 字幕工作台 · 全局设计令牌
+ * 一套深色放映厅主题 + 一套纸面浅色主题，全部通过 CSS 变量切换。
+ */
+
 :root {
-  /* 赛博朋克色彩系统 */
-  --cyber-pink: #ff006e;
-  --cyber-purple: #7b2ff7;
-  --cyber-cyan: #00e5ff;
-  --cyber-orange: #ff6b35;
-  --cyber-bg: #0a0a0f;
-  --cyber-bg-dark: #050508;
-  --cyber-card: rgba(15, 15, 21, 0.9);
-  --cyber-text: #e0e0ea;
-  --cyber-text-muted: #8a8a9e;
-  --cyber-border: rgba(255, 0, 110, 0.3);
-  
-  /* 霓虹发光效果 */
-  --cyber-glow-pink: 0 0 20px rgba(255, 0, 110, 0.5), 0 0 40px rgba(255, 0, 110, 0.2);
-  --cyber-glow-cyan: 0 0 20px rgba(0, 229, 255, 0.5), 0 0 40px rgba(0, 229, 255, 0.2);
-  --cyber-glow-purple: 0 0 20px rgba(123, 47, 247, 0.5), 0 0 40px rgba(123, 47, 247, 0.2);
-
-  /* 字体设置 */
-  --sans: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  --heading: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  --mono: ui-monospace, 'Consolas', monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
   color-scheme: dark;
-  color: var(--cyber-text);
-  background: var(--cyber-bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+
+  /* 墨色基底 */
+  --ink-0: #07070a;
+  --ink-1: #0c0c11;
+  --ink-2: #121218;
+  --ink-3: #1a1a22;
+  --ink-4: #23232d;
+
+  /* 文字 */
+  --paper: #efeae0;
+  --paper-dim: #c9c4b9;
+  --muted: #8b877f;
+  --faint: #5f5c57;
+
+  /* 强调色：字幕琥珀 */
+  --amber: #f2b544;
+  --amber-bright: #ffcd6b;
+  --amber-deep: #c1852a;
+  --mint: #79d6c0;
+  --coral: #e2684f;
+
+  /* 线与阴影 */
+  --line: rgba(242, 233, 214, 0.1);
+  --line-strong: rgba(242, 233, 214, 0.2);
+  --shadow-lift: 0 24px 60px -24px rgba(0, 0, 0, 0.9);
+  --glow-amber: 0 0 0 1px rgba(242, 181, 68, 0.45), 0 0 42px -8px rgba(242, 181, 68, 0.35);
+
+  /* 字体 */
+  --font-display: "Songti SC", "Source Han Serif SC", "Noto Serif SC", "STSong", "SimSun", Georgia, serif;
+  --font-body: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+
+  /* 节奏 */
+  --r-sm: 4px;
+  --r-md: 10px;
+  --r-lg: 18px;
+  --gutter: clamp(20px, 3vw, 40px);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-* {
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --ink-0: #f3eee2;
+  --ink-1: #faf6ec;
+  --ink-2: #fffdf7;
+  --ink-3: #ece5d5;
+  --ink-4: #e0d7c3;
+
+  --paper: #17140f;
+  --paper-dim: #2b2620;
+  --muted: #6d655a;
+  --faint: #948b7d;
+
+  --amber: #a8620f;
+  --amber-bright: #c4761a;
+  --amber-deep: #7c4a0c;
+  --mint: #1f7f6c;
+  --coral: #b23c22;
+
+  --line: rgba(23, 20, 15, 0.14);
+  --line-strong: rgba(23, 20, 15, 0.26);
+  --shadow-lift: 0 20px 48px -28px rgba(60, 46, 20, 0.6);
+  --glow-amber: 0 0 0 1px rgba(168, 98, 15, 0.45), 0 14px 34px -18px rgba(168, 98, 15, 0.5);
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  position: relative;
+  min-height: 100svh;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--paper);
+  background-color: var(--ink-0);
+  background-image:
+    radial-gradient(1200px 620px at 14% -10%, rgba(242, 181, 68, 0.07), transparent 62%),
+    radial-gradient(900px 520px at 92% 8%, rgba(121, 214, 192, 0.045), transparent 60%);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overflow-x: hidden;
 }
 
-/* 动态网格背景 */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: 
-    linear-gradient(rgba(255, 0, 110, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
-  background-size: 50px 50px;
-  pointer-events: none;
-  z-index: 0;
-  animation: gridMove 20s linear infinite;
-}
-
-@keyframes gridMove {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(50px, 50px); }
-}
-
-/* 扫描线效果 */
+/* 胶片颗粒：极轻的一层噪点，避免纯色平面 */
 body::after {
-  content: '';
+  content: "";
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, 
-    transparent, 
-    rgba(0, 229, 255, 0.1), 
-    rgba(255, 0, 110, 0.2), 
-    rgba(123, 47, 247, 0.1), 
-    transparent);
+  inset: 0;
+  z-index: 9999;
   pointer-events: none;
-  z-index: 1000;
-  animation: scanline 4s linear infinite;
-}
-
-@keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 #root {
-  width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
   min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 1;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 700;
-  color: var(--cyber-text);
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-
-h1 {
-  font-size: 3rem;
-  letter-spacing: 4px;
-  margin: 32px 0;
-  background: linear-gradient(135deg, var(--cyber-pink), var(--cyber-purple), var(--cyber-cyan));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  filter: drop-shadow(0 0 10px rgba(255, 0, 110, 0.3));
-}
-
-h2 {
-  font-size: 1.5rem;
-  line-height: 118%;
-  letter-spacing: 2px;
-  margin: 0 0 8px;
-  color: var(--cyber-cyan);
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--paper);
 }
 
 p {
   margin: 0;
-  color: var(--cyber-text);
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--cyber-cyan);
-  background: rgba(0, 229, 255, 0.1);
-  border: 1px solid rgba(0, 229, 255, 0.2);
-  padding: 4px 8px;
+a {
+  color: var(--amber);
+  text-decoration: none;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
 }
 
-@media (max-width: 1024px) {
-  :root {
-    font-size: 16px;
-  }
-  
-  h1 {
-    font-size: 2rem;
-    letter-spacing: 2px;
-  }
-  
-  h2 {
-    font-size: 1.25rem;
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(242, 181, 68, 0.28);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* 等宽小标签：时间码、编号、状态 */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+/* 滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-4) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-4);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
