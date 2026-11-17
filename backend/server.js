@@ -563,8 +563,7 @@ function sendProgress(step, progress, message) {
 }
 
 app.use(cors({
-  origin: '*', // 允许所有来源，生产环境中应该设置具体的域名
-  credentials: true
+  origin: '*' // 允许所有来源；本服务不使用 Cookie，故不开启 credentials
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -594,7 +593,19 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  // 限制单文件大小与数量，避免超大文件打满磁盘
+  limits: { fileSize: 2 * 1024 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('video/')) {
+      return cb(null, true);
+    }
+    const error = new Error('仅支持视频文件（video/*）');
+    error.status = 400;
+    cb(error);
+  }
+});
 
 // 提取音频
 const extractAudio = (videoPath, audioPath) => {
@@ -2086,10 +2097,31 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
   }
 });
 
+// 安全解析临时目录内的文件名，阻止 ../、..\\ 造成的目录穿越
+const resolveTempFile = (rawName) => {
+  const root = path.resolve(fileManager.tempDir);
+  const resolved = path.resolve(root, path.basename(String(rawName || '')));
+  if (resolved === root || !resolved.startsWith(root + path.sep)) return null;
+  return resolved;
+};
+
+// 健康检查
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.round(process.uptime()),
+    queue: {
+      running: taskQueue.getRunningCount(),
+      waiting: taskQueue.getQueueSize()
+    }
+  });
+});
+
 // 提供翻译后的视频预览，不删除文件
 app.get('/preview/:filename', (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(fileManager.tempDir, filename);
+  const filename = path.basename(req.params.filename);
+  const filePath = resolveTempFile(filename);
+  if (!filePath) return res.status(400).send('Invalid file name');
   
   console.log(`预览请求: ${filename}, 文件路径: ${filePath}, 临时目录: ${fileManager.tempDir}`);
   
@@ -2111,8 +2143,9 @@ app.get('/preview/:filename', (req, res) => {
 
 // 提供翻译后的视频下载，下载后删除文件
 app.get('/uploads/:filename', (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(fileManager.tempDir, filename);
+  const filename = path.basename(req.params.filename);
+  const filePath = resolveTempFile(filename);
+  if (!filePath) return res.status(400).send('Invalid file name');
   
   console.log(`下载请求: ${filename}, 文件路径: ${filePath}, 临时目录: ${fileManager.tempDir}`);
   
@@ -2162,7 +2195,7 @@ server.listen(port, '0.0.0.0', () => {
   console.log('- 语音识别: OpenSpeech ASR API (带时间轴字幕生成)');
   console.log('- 翻译: 火山引擎机器翻译API (新版控制台，使用X-Api-Key)');
   console.log('- 校准: 豆包对话模型 (使用X-Api-Key)');
-  console.log('API Key: ' + VOLC_API_KEY.substring(0, 8) + '...' + VOLC_API_KEY.substring(VOLC_API_KEY.length - 8));
+  console.log('API Key: ' + (VOLC_API_KEY ? '已配置（长度 ' + VOLC_API_KEY.length + '，不在日志中输出）' : '未配置'));
   console.log('注意: 所有API使用新版控制台认证格式 (X-Api-Key)');
   console.log(`后端服务可通过 http://localhost:${port} 访问`);
   console.log(`或通过IP地址访问: http://172.22.16.1:${port}`);

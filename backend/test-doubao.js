@@ -1,6 +1,7 @@
+require('dotenv').config();
 // 测试豆包大模型API
 const axios = require('axios');
-const VOLC_API_KEY = '***REMOVED_DOUBAO_KEY***'; // 豆包API密钥
+const VOLC_API_KEY = process.env.DOUBAO_API_KEY; // 豆包API密钥
 
 async function testDoubaoAPI() {
   console.log('=== 豆包大模型API测试 ===');

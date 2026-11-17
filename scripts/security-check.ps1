@@ -69,7 +69,10 @@ $secretPatterns = @(
     @{ Name = 'Slack 令牌'; Regex = 'xox[baprs]-[A-Za-z0-9\-]{10,}' },
     @{ Name = 'Google API Key'; Regex = 'AIza[0-9A-Za-z_\-]{35}' },
     @{ Name = 'JWT'; Regex = 'eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}' },
-    @{ Name = '私钥块'; Regex = '-----BEGIN [A-Z ]*PRIVATE KEY-----' }
+    @{ Name = '私钥块'; Regex = '-----BEGIN [A-Z ]*PRIVATE KEY-----' },
+    @{ Name = '硬编码密钥赋值'; Regex = '(API_KEY|ACCESS_TOKEN|SECRET_KEY|AUTH_TOKEN|APP_SECRET)\s*[:=]\s*[''"][A-Za-z0-9_\-]{16,}[''"]' },
+    @{ Name = 'UUID 形式密钥'; Regex = '(?i)(key|token|secret)[a-z_]*\s*[:=]\s*[''"][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[''"]' },
+    @{ Name = 'Bearer 令牌'; Regex = 'Bearer[;\s]+[A-Za-z0-9_\-]{20,}' }
 )
 
 $scannable = $tracked | Where-Object {

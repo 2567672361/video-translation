@@ -1,7 +1,8 @@
+require('dotenv').config();
 const axios = require('axios');
 
 // 豆包API密钥
-const DOUBAO_API_KEY = '***REMOVED_DOUBAO_KEY***';
+const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY;
 
 // 测试两种不同的端点格式
 async function testEndpoint(endpointUrl, requestBody, description) {

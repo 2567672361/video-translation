@@ -1,6 +1,7 @@
+require('dotenv').config();
 // 测试火山引擎机器翻译API
 const axios = require('axios');
-const VOLC_API_KEY = '***REMOVED_VOLC_KEY***';
+const VOLC_API_KEY = process.env.VOLC_API_KEY;
 
 // 生成UUID的函数（复制自server.js）
 const generateUUID = () => {

@@ -71,11 +71,9 @@ try {
   
   console.log('\n🔍 检查硬编码残留:');
   const hardcodedChecks = [
-    { pattern: /"***REMOVED_VOLC_KEY***"/, name: '火山引擎API密钥硬编码' },
-    { pattern: /"***REMOVED_DOUBAO_KEY***"/, name: '豆包API密钥硬编码' },
-    { pattern: /"***REMOVED_APP_ID***"/, name: 'APP ID硬编码' },
-    { pattern: /"***REMOVED_ACCESS_TOKEN***"/, name: 'Access Token硬编码' },
-    { pattern: /"doubao-seed-2-0-pro-260215"/, name: '模型名称硬编码' }
+    { pattern: /(API_KEY|ACCESS_TOKEN|SECRET_KEY|APP_ID)\s*[:=]\s*['"][A-Za-z0-9_\-]{16,}['"]/, name: '密钥或凭据硬编码' },
+    { pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/, name: 'UUID 形式密钥硬编码' },
+    { pattern: /Bearer;\s+[A-Za-z0-9_\-]{20,}/, name: 'Bearer 令牌硬编码' }
   ];
   
   let hardcodedFound = false;

@@ -1,12 +1,13 @@
+require('dotenv').config();
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 
 // 用户提供的凭据
-const APP_ID = "***REMOVED_APP_ID***";
-const ACCESS_TOKEN = "***REMOVED_ACCESS_TOKEN***";
-const SECRET_KEY = "***REMOVED_SECRET_KEY***";
+const APP_ID = process.env.VOLC_APP_ID;
+const ACCESS_TOKEN = process.env.VOLC_ACCESS_TOKEN;
+const SECRET_KEY = process.env.VOLC_SECRET_KEY;
 
 // 查找最新的WAV音频文件
 const uploadsDir = './uploads';

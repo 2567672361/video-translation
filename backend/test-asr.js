@@ -1,3 +1,4 @@
+require('dotenv').config();
 // 测试语音识别API（auc/submit和auc/query）
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +9,7 @@ const path = require('path');
 // 但更简单的方法是：直接测试API端点
 
 const axios = require('axios');
-const VOLC_API_KEY = '***REMOVED_VOLC_KEY***';
+const VOLC_API_KEY = process.env.VOLC_API_KEY;
 
 async function testSpeechRecognitionWithAudioFile(audioFilePath) {
   console.log('=== 语音识别API测试 ===');
@@ -29,8 +30,8 @@ async function testSpeechRecognitionWithAudioFile(audioFilePath) {
     
     const submitResponse = await axios.post('https://openspeech.bytedance.com/api/v1/auc/submit', {
       app: {
-        appid: "***REMOVED_APP_ID***", // 用户提供的APP ID
-        token: "***REMOVED_ACCESS_TOKEN***", // 用户提供的Access Token
+        appid: process.env.VOLC_APP_ID, // 用户提供的APP ID
+        token: process.env.VOLC_ACCESS_TOKEN, // 用户提供的Access Token
         cluster: "volc_auc_common"
       },
       user: {
@@ -49,7 +50,7 @@ async function testSpeechRecognitionWithAudioFile(audioFilePath) {
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer; ***REMOVED_ACCESS_TOKEN***`
+        'Authorization': `Bearer; ${process.env.VOLC_ACCESS_TOKEN}`
       }
     });
     
@@ -69,14 +70,14 @@ async function testSpeechRecognitionWithAudioFile(audioFilePath) {
         
         try {
           const queryResponse = await axios.post('https://openspeech.bytedance.com/api/v1/auc/query', {
-            appid: "***REMOVED_APP_ID***", // 用户提供的APP ID
-            token: "***REMOVED_ACCESS_TOKEN***", // 用户提供的Access Token
+            appid: process.env.VOLC_APP_ID, // 用户提供的APP ID
+            token: process.env.VOLC_ACCESS_TOKEN, // 用户提供的Access Token
             id: taskId,
             cluster: "volc_auc_common"
           }, {
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer; ***REMOVED_ACCESS_TOKEN***`
+              'Authorization': `Bearer; ${process.env.VOLC_ACCESS_TOKEN}`
             }
           });
           

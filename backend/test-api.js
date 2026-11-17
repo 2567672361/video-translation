@@ -1,3 +1,4 @@
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -11,7 +12,7 @@ const {
 } = require('./server.js');
 
 // 火山引擎API配置
-const VOLC_API_KEY = '***REMOVED_VOLC_KEY***';
+const VOLC_API_KEY = process.env.VOLC_API_KEY;
 const VOLC_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 
 // 生成UUID的函数（从server.js复制）

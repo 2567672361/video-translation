@@ -1,3 +1,4 @@
+require('dotenv').config();
 // 测试完整的视频翻译流程（使用现有WAV文件）
 const fs = require('fs');
 const path = require('path');
@@ -6,8 +7,8 @@ const path = require('path');
 const axios = require('axios');
 
 // 复制server.js中的API密钥配置
-const VOLC_API_KEY = '***REMOVED_VOLC_KEY***';
-const DOUBAO_API_KEY = '***REMOVED_DOUBAO_KEY***';
+const VOLC_API_KEY = process.env.VOLC_API_KEY;
+const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY;
 
 // 生成UUID的函数
 const generateUUID = () => {
@@ -30,8 +31,8 @@ async function speechToTextWithTimestamps(audioPath) {
     console.log('提交任务到auc/submit...');
     const submitResponse = await axios.post('https://openspeech.bytedance.com/api/v1/auc/submit', {
       app: {
-        appid: "***REMOVED_APP_ID***",
-        token: "***REMOVED_ACCESS_TOKEN***",
+        appid: process.env.VOLC_APP_ID,
+        token: process.env.VOLC_ACCESS_TOKEN,
         cluster: "volc_auc_common"
       },
       user: {
@@ -50,7 +51,7 @@ async function speechToTextWithTimestamps(audioPath) {
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer; ***REMOVED_ACCESS_TOKEN***`
+        'Authorization': `Bearer; ${process.env.VOLC_ACCESS_TOKEN}`
       }
     });
     
@@ -70,14 +71,14 @@ async function speechToTextWithTimestamps(audioPath) {
         
         try {
           const queryResponse = await axios.post('https://openspeech.bytedance.com/api/v1/auc/query', {
-            appid: "***REMOVED_APP_ID***",
-            token: "***REMOVED_ACCESS_TOKEN***",
+            appid: process.env.VOLC_APP_ID,
+            token: process.env.VOLC_ACCESS_TOKEN,
             id: taskId,
             cluster: "volc_auc_common"
           }, {
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer; ***REMOVED_ACCESS_TOKEN***`
+              'Authorization': `Bearer; ${process.env.VOLC_ACCESS_TOKEN}`
             }
           });
           
