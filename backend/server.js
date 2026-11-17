@@ -10,6 +10,9 @@ const FormData = require('form-data');
 const http = require('http');
 const WebSocket = require('ws');
 const expressWs = require('express-ws');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const crypto = require('node:crypto');
+const db = require('./db');
 require('dotenv').config();
 
 // 任务队列系统
@@ -536,6 +539,25 @@ const wss = wsInstance.getWss();
 // 存储所有活动的WebSocket连接
 const clients = new Set();
 
+// 当前任务上下文：让 sendProgress 在不改动各调用点的情况下拿到 jobId
+const jobContext = new AsyncLocalStorage();
+// 已请求取消的任务
+const cancelledJobs = new Set();
+
+function currentJobId() {
+  const store = jobContext.getStore();
+  return store ? store.jobId : null;
+}
+
+function throwIfCancelled() {
+  const jobId = currentJobId();
+  if (jobId && cancelledJobs.has(jobId)) {
+    const error = new Error('任务已取消');
+    error.code = 'JOB_CANCELLED';
+    throw error;
+  }
+}
+
 // 通过 express-ws 注册进度推送 WebSocket 路由
 app.ws('/ws/progress', (ws, req) => {
   console.log('新的进度WebSocket连接');
@@ -552,9 +574,21 @@ app.ws('/ws/progress', (ws, req) => {
   });
 });
 
-// 发送进度信息给所有客户端
+// 发送进度信息给所有客户端（带 jobId，前端按任务过滤），并写入数据库
 function sendProgress(step, progress, message) {
-  const data = JSON.stringify({ type: 'progress', step, progress, message });
+  const jobId = currentJobId();
+  if (jobId) {
+    try {
+      db.updateJob(jobId, {
+        progress: Math.max(0, Math.min(100, Math.round(progress))),
+        currentStep: step,
+      });
+    } catch (error) {
+      console.error('写入任务进度失败:', error.message);
+    }
+  }
+
+  const data = JSON.stringify({ type: 'progress', jobId, step, progress, message });
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(data);
@@ -1794,15 +1828,14 @@ const mergeSubtitleData = (chunkResults) => {
 
 // 视频上传和翻译API
 app.post('/api/translate-video', upload.single('video'), async (req, res) => {
-  // 记录请求开始
   const requestData = monitoringSystem.startRequest();
-  
+
   try {
-    const { sourceLanguage, targetLanguage, useProofreading, subtitleStyle } = req.body;
-    const videoPath = req.file.path;
-    
-    // 解析参数
-    const shouldUseProofreading = useProofreading !== 'false';
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: '请上传视频文件' });
+    }
+
+    const { sourceLanguage = 'auto', targetLanguage = 'zh', subtitleStyle } = req.body;
     let parsedSubtitleStyle = null;
     if (subtitleStyle) {
       try {
@@ -1811,21 +1844,79 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
         console.warn('解析字幕样式失败，使用默认样式:', error.message);
       }
     }
-    
-    // 获取队列状态
-    const queueSize = taskQueue.getQueueSize();
-    const runningCount = taskQueue.getRunningCount();
-    
-    console.log(`收到新的翻译请求，当前队列: ${queueSize}，运行中: ${runningCount}`);
-    
-    // 发送队列状态
-    sendProgress('队列等待', 0, `当前队列: ${queueSize}，运行中: ${runningCount}`);
-    
-    // 将任务添加到队列
-    const result = await taskQueue.addTask(async () => {
-      const MAX_CHUNK_DURATION = 300; // 5分钟（300秒）
-      
-      try {
+
+    const jobId = crypto.randomUUID();
+    db.createJob({
+      id: jobId,
+      filename: req.file.originalname,
+      fileSize: req.file.size,
+      sourcePath: req.file.path,
+      sourceLanguage,
+      targetLanguage
+    });
+
+    // 立即返回任务标识，实际处理在队列中进行
+    res.status(202).json({ success: true, jobId, status: 'pending' });
+    enqueueTranslateJob(jobId, req.file.path, {
+      sourceLanguage,
+      targetLanguage,
+      subtitleStyle: parsedSubtitleStyle
+    });
+
+    monitoringSystem.endRequest(requestData, true);
+  } catch (error) {
+    console.error('创建翻译任务失败:', error);
+    if (req.file) {
+      await safeUnlink(req.file.path);
+    }
+    monitoringSystem.endRequest(requestData, false, error);
+    res.status(500).json({ success: false, error: error.message || '创建任务失败' });
+  }
+});
+
+/** 入队，并在任务结束后把结果写回数据库 */
+function enqueueTranslateJob(jobId, videoPath, options) {
+  taskQueue
+    .addTask(() => jobContext.run({ jobId }, () => runTranslationJob(jobId, videoPath, options)))
+    .then((result) => {
+      const cancelled = cancelledJobs.has(jobId);
+      if (result && result.videoUrl) {
+        db.updateJob(jobId, { videoUrl: result.videoUrl });
+      }
+      if (result && Array.isArray(result.steps)) {
+        db.addSteps(jobId, result.steps);
+      }
+      if (result && Array.isArray(result.finalSubtitles)) {
+        db.addTranslations(jobId, result.finalSubtitles);
+      }
+      db.updateJob(jobId, {
+        status: cancelled ? 'canceled' : 'succeeded',
+        progress: cancelled ? 0 : 100,
+        currentStep: cancelled ? '已取消' : '处理完成'
+      });
+      cancelledJobs.delete(jobId);
+    })
+    .catch((error) => {
+      const cancelled = cancelledJobs.has(jobId) || error.code === 'JOB_CANCELLED';
+      console.error(`任务 ${jobId} 处理失败:`, error.message);
+      db.updateJob(jobId, {
+        status: cancelled ? 'canceled' : 'failed',
+        currentStep: cancelled ? '已取消' : '处理失败',
+        errorMessage: cancelled ? null : String(error.message || '处理失败').split('\n')[0].slice(0, 200)
+      });
+      cancelledJobs.delete(jobId);
+    });
+}
+
+/** 实际处理流程：保留原有步骤与日志，只去掉对 req/res 的依赖 */
+async function runTranslationJob(jobId, videoPath, options) {
+  const { sourceLanguage, targetLanguage, subtitleStyle: parsedSubtitleStyle } = options;
+  const MAX_CHUNK_DURATION = 300; // 5分钟（300秒）
+
+  try {
+    throwIfCancelled();
+    db.updateJob(jobId, { status: 'running', currentStep: '准备处理' });
+
         // 确保临时目录存在
         fileManager.ensureTempDir();
         
@@ -1841,12 +1932,14 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
         // 获取视频时长
         const videoDuration = await getVideoDuration(videoPath);
         console.log(`视频时长: ${videoDuration} 秒`);
+        throwIfCancelled();
         
         // 判断是否需要分割
         if (videoDuration <= MAX_CHUNK_DURATION) {
           console.log('视频时长较短，使用标准流程处理');
           
           // 标准流程：直接处理整个视频
+          throwIfCancelled();
           const audioPath = fileManager.getTempFilePath(Date.now() + '.wav');
           const subtitlePath = fileManager.getTempFilePath(Date.now() + '.srt');
           
@@ -1962,6 +2055,7 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
           const chunkResults = [];
           
           for (let i = 0; i < chunkPaths.length; i++) {
+            throwIfCancelled();
             const chunkPath = chunkPaths[i];
             console.log(`处理片段 ${i + 1}/${chunkPaths.length}: ${path.basename(chunkPath)}`);
             try {
@@ -2062,40 +2156,40 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
           };
         }
         
-      } catch (error) {
-        console.error('视频翻译处理失败:', error);
-        
-        // 清理上传的视频文件
-        if (req.file) {
-          await safeUnlink(req.file.path);
-        }
-        
-        throw error;
-      }
-    });
-    
-    res.json(result);
-    
-    // 记录请求成功
-    monitoringSystem.endRequest(requestData, true);
-    
   } catch (error) {
-    console.error('API请求处理失败:', error);
-    
-    // 清理上传的视频文件
-    if (req.file) {
-      await safeUnlink(req.file.path);
-    }
-    
-    // 记录请求失败
-    monitoringSystem.endRequest(requestData, false, error);
-    
-    res.status(500).json({
-      success: false,
-      error: error.message || '视频翻译处理失败'
-    });
+    console.error('视频翻译处理失败:', error);
+    await safeUnlink(videoPath);
+    throw error;
   }
+}
+
+// ---------- 任务查询接口 ----------
+app.get('/api/jobs', (req, res) => {
+  res.json({ success: true, jobs: db.listJobs(req.query.limit) });
 });
+
+app.get('/api/jobs/:id', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  res.json({ success: true, job });
+});
+
+app.post('/api/jobs/:id/cancel', (req, res) => {
+  const jobId = req.params.id;
+  const job = db.getJob(jobId);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  if (!['pending', 'running', 'canceling'].includes(job.status)) {
+    return res.status(409).json({ success: false, error: '任务已结束，无法取消' });
+  }
+  cancelledJobs.add(jobId);
+  db.updateJob(jobId, { status: 'canceling', currentStep: '取消中' });
+  res.json({ success: true, jobId, status: 'canceling' });
+});
+
 
 // 安全解析临时目录内的文件名，阻止 ../、..\\ 造成的目录穿越
 const resolveTempFile = (rawName) => {

@@ -576,3 +576,67 @@
     min-height: 360px;
   }
 }
+
+/* 最近任务列表 */
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--paper-dim);
+  font-size: 11.5px;
+  text-align: left;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+.history-item:hover {
+  background: var(--ink-2);
+  border-color: var(--line);
+  color: var(--paper);
+}
+
+.history-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.history-dot.status-succeeded {
+  background: var(--mint);
+}
+
+.history-dot.status-failed {
+  background: var(--coral);
+}
+
+.history-dot.status-running,
+.history-dot.status-pending {
+  background: var(--amber);
+}
+
+.history-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-status {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}

@@ -30,6 +30,17 @@ const PIPELINE = [
   { id: 'render', index: '05', label: '字幕合成' },
 ]
 
+const JOB_STATUS_TEXT = {
+  pending: '等待',
+  running: '处理中',
+  succeeded: '完成',
+  failed: '失败',
+  canceled: '已取消',
+  canceling: '取消中',
+}
+
+const statusText = (status) => JOB_STATUS_TEXT[status] || status || '未知'
+
 const STATUS_LABEL = {
   success: '成功',
   failed: '失败',
@@ -66,6 +77,12 @@ function VideoStudio() {
   const [result, setResult] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
   const [channelState, setChannelState] = useState('connecting')
+  const [jobId, setJobId] = useState(null)
+  const [jobStatus, setJobStatus] = useState('idle')
+  const [history, setHistory] = useState([])
+
+  const pollTimer = useRef(null)
+  const activeJobId = useRef(null)
 
   const inputRef = useRef(null)
   const dragDepth = useRef(0)
@@ -104,6 +121,7 @@ function VideoStudio() {
           try {
             const data = JSON.parse(event.data)
             if (data.type === 'progress') {
+              if (data.jobId && data.jobId !== activeJobId.current) return
               setCurrentStep(data.step || '')
               setProgress(Number(data.progress) || 0)
             }
@@ -190,15 +208,81 @@ function VideoStudio() {
     if (file) acceptFile(file)
   }
 
+  const stopPolling = useCallback(() => {
+    if (pollTimer.current) {
+      window.clearInterval(pollTimer.current)
+      pollTimer.current = null
+    }
+  }, [])
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/jobs?limit=8`)
+      if (!response.ok) return
+      const data = await response.json()
+      setHistory(Array.isArray(data.jobs) ? data.jobs : [])
+    } catch {
+      /* 历史记录加载失败不打断主流程 */
+    }
+  }, [])
+
+  const applyJob = useCallback((job) => {
+    setProgress(job.progress || 0)
+    setCurrentStep(job.current_step || '')
+    setJobStatus(job.status)
+    if (job.status === 'succeeded') {
+      setResult({ videoUrl: job.video_url, steps: job.steps || [] })
+      setIsProcessing(false)
+      setProgress(100)
+      setCurrentStep('处理完成')
+    } else if (job.status === 'failed') {
+      setError(job.error_message || '处理失败')
+      setIsProcessing(false)
+    } else if (job.status === 'canceled') {
+      setIsProcessing(false)
+      setCurrentStep('已取消')
+    }
+  }, [])
+
+  const pollJob = useCallback(async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${id}`)
+      if (!response.ok) return false
+      const data = await response.json()
+      applyJob(data.job)
+      if (['succeeded', 'failed', 'canceled'].includes(data.job.status)) {
+        stopPolling()
+        loadHistory()
+        if (data.job.status !== 'succeeded') setJobId(null)
+        return true
+      }
+    } catch {
+      /* 网络抖动时继续轮询 */
+    }
+    return false
+  }, [applyJob, loadHistory, stopPolling])
+
+  const startPolling = useCallback((id) => {
+    stopPolling()
+    activeJobId.current = id
+    pollTimer.current = window.setInterval(() => pollJob(id), 1500)
+  }, [pollJob, stopPolling])
+
+  useEffect(() => {
+    loadHistory()
+    return () => stopPolling()
+  }, [loadHistory, stopPolling])
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!videoFile || isProcessing) return
 
     setIsProcessing(true)
     setProgress(0)
-    setCurrentStep('准备上传')
+    setCurrentStep('提交任务')
     setError(null)
     setResult(null)
+    setJobStatus('pending')
 
     try {
       const formData = new FormData()
@@ -216,25 +300,40 @@ function VideoStudio() {
         body: formData,
       })
 
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        let message = `HTTP ${response.status}`
-        try {
-          const payload = await response.json()
-          message = payload.error || message
-        } catch {
-          /* 后端未返回 JSON 时保留状态码 */
-        }
-        throw new Error(message)
+        throw new Error(data.error || `HTTP ${response.status}`)
       }
 
-      const data = await response.json()
-      setResult(data)
-      setProgress(100)
-      setCurrentStep('处理完成')
+      setJobId(data.jobId)
+      activeJobId.current = data.jobId
+      startPolling(data.jobId)
     } catch (err) {
-      setError(err.message || '翻译失败，请检查后端服务是否已启动。')
-    } finally {
+      setError(err.message || '提交失败，请检查后端服务是否已启动。')
       setIsProcessing(false)
+    }
+  }
+
+  const cancelJob = async () => {
+    if (!jobId) return
+    try {
+      await fetch(`${API_URL}/api/jobs/${jobId}/cancel`, { method: 'POST' })
+      setCurrentStep('取消中')
+    } catch {
+      setError('取消失败，请稍后重试')
+    }
+  }
+
+  const openHistoryJob = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${id}`)
+      if (!response.ok) return
+      const data = await response.json()
+      setError(null)
+      setResult(null)
+      applyJob(data.job)
+    } catch {
+      setError('读取历史任务失败')
     }
   }
 
@@ -485,9 +584,33 @@ function VideoStudio() {
           >
             {isProcessing ? `处理中 ${progress}%` : '开始翻译'}
           </button>
+          {isProcessing && (
+            <button type="button" className="btn btn-block" style={{ marginTop: 8 }} onClick={cancelJob}>
+              取消任务
+            </button>
+          )}
           <p className="inspector-hint">
             处理期间请保持页面开启，进度由后端 WebSocket 推送。
           </p>
+        </div>
+
+        <div>
+          <p className="panel-title">最近任务</p>
+          {history.length === 0 ? (
+            <p className="readout readout-muted">暂无记录</p>
+          ) : (
+            <ul className="history-list">
+              {history.map((item) => (
+                <li key={item.id}>
+                  <button type="button" className="history-item" onClick={() => openHistoryJob(item.id)}>
+                    <span className={`history-dot status-${item.status}`} aria-hidden="true" />
+                    <span className="history-name">{item.filename}</span>
+                    <span className="history-status mono">{statusText(item.status)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="channel">
