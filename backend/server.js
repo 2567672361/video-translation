@@ -1887,6 +1887,13 @@ const mergeSubtitleData = (chunkResults) => {
 };
 
 // 视频上传和翻译API
+// multer 以 latin1 解析文件名，中文名会变成乱码，这里按 UTF-8 还原
+const normalizeFilename = (name) => {
+  if (!name || !/[^\x00-\x7F]/.test(name)) return name;
+  const converted = Buffer.from(name, 'latin1').toString('utf8');
+  return converted.includes('\uFFFD') ? name : converted;
+};
+
 app.post('/api/translate-video', upload.single('video'), async (req, res) => {
   const requestData = monitoringSystem.startRequest();
 
@@ -1908,7 +1915,7 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
     const jobId = crypto.randomUUID();
     db.createJob({
       id: jobId,
-      filename: req.file.originalname,
+      filename: normalizeFilename(req.file.originalname),
       fileSize: req.file.size,
       sourcePath: req.file.path,
       sourceLanguage,
@@ -2222,7 +2229,32 @@ async function runTranslationJob(jobId, videoPath, options) {
 
 // ---------- 任务查询接口 ----------
 app.get('/api/jobs', (req, res) => {
-  res.json({ success: true, jobs: db.listJobs(req.query.limit) });
+  const status = ['pending', 'running', 'succeeded', 'failed', 'canceled', 'canceling'].includes(req.query.status)
+    ? req.query.status
+    : null;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+  res.json({
+    success: true,
+    jobs: db.listJobs({ limit, offset, status }),
+    total: db.countJobs(status),
+    limit,
+    offset
+  });
+});
+
+app.delete('/api/jobs/:id', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  if (['pending', 'running', 'canceling'].includes(job.status)) {
+    return res.status(409).json({ success: false, error: '任务进行中，请先取消' });
+  }
+  cancelledJobs.delete(job.id);
+  db.deleteJob(job.id);
+  res.json({ success: true, id: job.id });
 });
 
 app.get('/api/jobs/:id', (req, res) => {

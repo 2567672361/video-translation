@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import VideoStudio from './components/VideoStudio'
+import HistoryView from './components/HistoryView'
 
 /** 顶栏时间码：让界面有一点“正在录制”的现场感，不影响功能 */
 function useTimecode() {
@@ -36,6 +37,7 @@ function readInitialTheme() {
 
 function App() {
   const [theme, setTheme] = useState(readInitialTheme)
+  const [view, setView] = useState('workbench')
   const timecode = useTimecode()
 
   useEffect(() => {
@@ -56,6 +58,13 @@ function App() {
 
 
         <div className="topbar-tools">
+          <button
+            type="button"
+            className={`topbar-link ${view === 'history' ? 'is-active' : ''}`}
+            onClick={() => setView(view === 'history' ? 'workbench' : 'history')}
+          >
+            历史记录
+          </button>
           <span className="rec-timecode" aria-hidden="true">
             <span className="rec-dot" />
             TC {timecode}
@@ -101,7 +110,7 @@ function App() {
       </header>
 
       <div className="shell-body">
-        <VideoStudio />
+        {view === 'history' ? <HistoryView onBack={() => setView('workbench')} /> : <VideoStudio />}
       </div>
 
       <footer className="statusbar">

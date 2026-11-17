@@ -133,12 +133,32 @@ function getJob(id) {
   };
 }
 
-function listJobs(limit = 20) {
+function listJobs({ limit = 20, offset = 0, status = null } = {}) {
   const size = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const start = Math.max(Number(offset) || 0, 0);
+  const filter = status || null;
   const rows = db
-    .prepare('SELECT id, filename, source_language, target_language, status, progress, video_url, error_message, created_at, updated_at FROM jobs ORDER BY created_at DESC LIMIT ?')
-    .all(size);
+    .prepare(
+      `SELECT id, filename, source_language, target_language, status, progress, video_url, error_message, created_at, updated_at
+         FROM jobs
+        WHERE (?1 IS NULL OR status = ?1)
+        ORDER BY created_at DESC
+        LIMIT ?2 OFFSET ?3`,
+    )
+    .all(filter, size, start);
   return rows;
+}
+
+function countJobs(status = null) {
+  const row = db
+    .prepare('SELECT COUNT(*) AS total FROM jobs WHERE (?1 IS NULL OR status = ?1)')
+    .get(status || null);
+  return row ? row.total : 0;
+}
+
+function deleteJob(id) {
+  const result = db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+  return Number(result.changes) > 0;
 }
 
 function addSteps(jobId, steps = []) {
@@ -166,6 +186,8 @@ module.exports = {
   updateJob,
   getJob,
   listJobs,
+  countJobs,
+  deleteJob,
   addSteps,
   addTranslations,
 };

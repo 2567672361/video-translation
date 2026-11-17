@@ -1,0 +1,195 @@
+/* 历史任务页 */
+.history-page {
+  padding: var(--gutter);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: calc(100svh - 72px);
+}
+
+.history-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.history-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.history-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.history-filter {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.history-filter:hover {
+  color: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.history-filter.is-active {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(242, 181, 68, 0.08);
+}
+
+.history-total {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--faint);
+}
+
+.history-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.history-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--ink-1);
+}
+
+.history-row + .history-row {
+  border-top: 1px solid var(--line);
+}
+
+.history-row:hover {
+  background: var(--ink-2);
+}
+
+.history-main {
+  min-width: 0;
+}
+
+.history-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  color: var(--paper);
+}
+
+.history-meta {
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.history-badge {
+  justify-self: start;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.history-badge.status-succeeded {
+  border-color: rgba(121, 214, 192, 0.4);
+  color: var(--mint);
+}
+
+.history-badge.status-failed {
+  border-color: rgba(226, 104, 79, 0.4);
+  color: var(--coral);
+}
+
+.history-badge.status-running,
+.history-badge.status-pending,
+.history-badge.status-canceling {
+  border-color: rgba(242, 181, 68, 0.4);
+  color: var(--amber);
+}
+
+.history-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.history-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--ink-1);
+}
+
+.history-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.history-video {
+  width: 100%;
+  max-height: 360px;
+  border-radius: var(--r-md);
+  background: #000;
+}
+
+.history-detail-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .history-page {
+    padding: 20px;
+  }
+
+  .history-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 8px;
+  }
+
+  .history-actions {
+    grid-column: 1 / -1;
+  }
+}
