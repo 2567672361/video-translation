@@ -67,6 +67,17 @@ if (!columns.includes('subtitle_url')) {
   db.exec('ALTER TABLE jobs ADD COLUMN subtitle_url TEXT');
 }
 
+// 修复历史数据：早期版本把 UTF-8 文件名按 latin1 存储，出现乱码
+const repair = db.prepare('SELECT id, filename FROM jobs').all();
+const updateName = db.prepare('UPDATE jobs SET filename = ? WHERE id = ?');
+for (const row of repair) {
+  if (!/[À-ÿ]/.test(row.filename || '')) continue;
+  const fixed = Buffer.from(row.filename, 'latin1').toString('utf8');
+  if (!fixed.includes('�') && fixed !== row.filename) {
+    updateName.run(fixed, row.id);
+  }
+}
+
 const stmtInsertJob = db.prepare(`
   INSERT INTO jobs (id, filename, file_size, source_path, source_language, target_language, status, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
