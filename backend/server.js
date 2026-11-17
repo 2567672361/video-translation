@@ -2173,6 +2173,11 @@ app.get('/uploads/:filename', (req, res) => {
 
 // 导出辅助函数供测试使用
 module.exports = {
+  TaskQueue,
+  ResourceManager,
+  resolveTempFile,
+  app,
+  server,
   getVideoDuration,
   splitVideoIntoChunks,
   mergeVideoChunks,
@@ -2188,16 +2193,18 @@ module.exports = {
   addSubtitleToVideo
 };
 
-// 启动服务器
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Server running on port ${port}`);
-  console.log('使用火山引擎API配置（新版控制台）:');
-  console.log('- 语音识别: OpenSpeech ASR API (带时间轴字幕生成)');
-  console.log('- 翻译: 火山引擎机器翻译API (新版控制台，使用X-Api-Key)');
-  console.log('- 校准: 豆包对话模型 (使用X-Api-Key)');
-  console.log('API Key: ' + (VOLC_API_KEY ? '已配置（长度 ' + VOLC_API_KEY.length + '，不在日志中输出）' : '未配置'));
-  console.log('注意: 所有API使用新版控制台认证格式 (X-Api-Key)');
-  console.log(`后端服务可通过 http://localhost:${port} 访问`);
-  console.log(`或通过IP地址访问: http://172.22.16.1:${port}`);
-  console.log(`WebSocket服务可通过 ws://localhost:${port} 访问`);
-});
+// 启动服务器（仅在被直接运行时启动，便于测试中安全地 require）
+if (require.main === module) {
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`Server running on port ${port}`);
+    console.log('使用火山引擎API配置（新版控制台）:');
+    console.log('- 语音识别: OpenSpeech ASR API (带时间轴字幕生成)');
+    console.log('- 翻译: 火山引擎机器翻译API (新版控制台，使用X-Api-Key)');
+    console.log('- 校准: 豆包对话模型 (使用X-Api-Key)');
+    console.log('API Key: ' + (VOLC_API_KEY ? '已配置（长度 ' + VOLC_API_KEY.length + '，不在日志中输出）' : '未配置'));
+    console.log('注意: 所有API使用新版控制台认证格式 (X-Api-Key)');
+    console.log(`后端服务可通过 http://localhost:${port} 访问`);
+    console.log(`或通过IP地址访问: http://172.22.16.1:${port}`);
+    console.log(`WebSocket服务可通过 ws://localhost:${port} 访问`);
+  });
+}
