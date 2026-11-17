@@ -1057,6 +1057,12 @@ const translateTextWithDoubao = async (text, targetLanguage) => {
     };
 
     const targetLang = languageNames[targetLanguage] || targetLanguage;
+  const normalizeLang = (code, fallback) => ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar'].includes(code) ? code : fallback;
+  const TARGET_LANG_CODE = normalizeLang(targetLanguage, 'zh');
+  const translationOptions = { target_language: TARGET_LANG_CODE };
+  if (sourceLanguage && sourceLanguage !== 'auto') {
+    translationOptions.source_language = normalizeLang(sourceLanguage, TARGET_LANG_CODE);
+  }
     const requestId = generateUUID();
 
     // 根据用户提供的curl示例，使用Authorization: Bearer认证
@@ -1121,7 +1127,68 @@ const translateTextWithDoubao = async (text, targetLanguage) => {
 };
 
 // 使用LLM逐句翻译字幕，保留时间轴（自动分批）
-const translateSubtitlesWithLLM = async (subtitles, targetLanguage) => {
+// 单句过长时按标点拆分，并按字符数比例分配时间，避免整段字幕“一股脑”出现
+const segmentLongSubtitle = (subtitles, maxDurationMs = 8000) => {
+  const punctuation = /[。！？!?；;，,、]/;
+  const result = [];
+
+  for (const item of subtitles) {
+    const start = Number(item.start_time) || 0;
+    const end = Number(item.end_time) || 0;
+    const duration = Math.max(0, end - start);
+    const text = String(item.text || '').trim();
+
+    if (duration <= maxDurationMs || text.length < 4) {
+      result.push(item);
+      continue;
+    }
+
+    const pieces = text.split(punctuation).map((piece) => piece.trim()).filter(Boolean);
+    if (pieces.length < 2) {
+      result.push(item);
+      continue;
+    }
+
+    const totalChars = pieces.reduce((sum, piece) => sum + piece.length, 0) || 1;
+    let cursor = start;
+    pieces.forEach((piece, index) => {
+      const isLast = index === pieces.length - 1;
+      const span = Math.round((duration * piece.length) / totalChars);
+      const pieceEnd = isLast ? end : Math.min(cursor + span, end);
+      if (pieceEnd > cursor) {
+        result.push({ ...item, start_time: cursor, end_time: pieceEnd, text: piece });
+      }
+      cursor = pieceEnd;
+    });
+  }
+
+  return result;
+};
+
+// 时间校对：ASR 只给出一整段时，先用自动打轴接口重新对齐，失败再按标点拆分兜底
+const refineSubtitleTiming = async (audioPath, subtitles) => {
+  if (!Array.isArray(subtitles) || subtitles.length === 0) return subtitles;
+
+  const longest = Math.max(...subtitles.map((s) => (Number(s.end_time) || 0) - (Number(s.start_time) || 0)));
+  if (subtitles.length > 1 && longest <= 12000) return subtitles;
+
+  const text = subtitles.map((s) => s.text).join('\n');
+  try {
+    const aligned = await alignSubtitlesWithAudio(audioPath, text);
+    if (Array.isArray(aligned) && aligned.length > 1) {
+      console.log(`自动打轴完成：${aligned.length} 条字幕`);
+      return aligned;
+    }
+  } catch (error) {
+    console.warn('自动打轴失败，改用标点拆分兜底:', error.message);
+  }
+
+  const fallback = segmentLongSubtitle(subtitles);
+  console.log(`标点拆分兜底：${subtitles.length} 条 -> ${fallback.length} 条`);
+  return fallback;
+};
+
+const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLanguage = 'auto') => {
   if (!subtitles || subtitles.length === 0) return subtitles;
 
   const languageNames = {
@@ -1155,10 +1222,7 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage) => {
             {
               "type": "input_text",
               "text": batchText,
-              "translation_options": {
-                "source_language": "ja",
-                "target_language": "zh"
-              }
+              translation_options: translationOptions
             }
           ]
         }
@@ -1210,7 +1274,7 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage) => {
           "content": [{
             "type": "input_text",
             "text": retryText,
-            "translation_options": { "source_language": "ja", "target_language": "zh" }
+            translation_options: translationOptions
           }]
         }]
       };
@@ -1757,7 +1821,8 @@ const processVideoChunk = async (chunkPath, sourceLanguage, targetLanguage, subt
     
     if (subtitles.length > 0) {
       console.log('使用LLM逐句翻译 + ASR原始时间轴');
-      finalSubtitles = await translateSubtitlesWithLLM(subtitles, targetLanguage);
+      finalSubtitles = await translateSubtitlesWithLLM(subtitles, targetLanguage, sourceLanguage);
+      finalSubtitles = await refineSubtitleTiming(audioPath, finalSubtitles);
     } else {
       // ASR也没有结果，创建单条字幕覆盖整个片段
       console.warn('ASR未返回任何字幕，创建单条覆盖字幕');
@@ -1973,7 +2038,8 @@ async function runTranslationJob(jobId, videoPath, options) {
           let finalSubtitles = null;
           try {
             sendProgress('翻译处理', 45, '开始逐句翻译');
-            finalSubtitles = await translateSubtitlesWithLLM(subtitles, targetLanguage);
+            finalSubtitles = await translateSubtitlesWithLLM(subtitles, targetLanguage, sourceLanguage);
+            finalSubtitles = await refineSubtitleTiming(audioPath, finalSubtitles);
             sendProgress('翻译处理', 65, `翻译成功，共${finalSubtitles.length}条`);
             steps.push({ name: 'translation', status: 'success', message: `逐句翻译成功，共${finalSubtitles.length}条` });
           } catch (error) {
@@ -2297,6 +2363,8 @@ module.exports = {
   splitVideoIntoChunks,
   mergeVideoChunks,
   adjustSubtitlesTimestamps,
+  segmentLongSubtitle,
+  refineSubtitleTiming,
   processVideoChunk,
   mergeSubtitleData,
   extractAudio,
