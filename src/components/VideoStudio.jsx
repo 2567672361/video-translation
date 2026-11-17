@@ -80,6 +80,7 @@ function VideoStudio() {
   const [jobId, setJobId] = useState(null)
   const [jobStatus, setJobStatus] = useState('idle')
   const [history, setHistory] = useState([])
+  const [failedJobId, setFailedJobId] = useState(null)
 
   const pollTimer = useRef(null)
   const activeJobId = useRef(null)
@@ -237,13 +238,16 @@ function VideoStudio() {
     if (job.status === 'succeeded') {
       setResult({ videoUrl: job.video_url, steps: job.steps || [] })
       setIsProcessing(false)
+      setFailedJobId(null)
       setProgress(100)
       setCurrentStep('处理完成')
     } else if (job.status === 'failed') {
       setError(job.error_message || '处理失败')
       setIsProcessing(false)
+      setFailedJobId(job.id)
     } else if (job.status === 'canceled') {
       setIsProcessing(false)
+      setFailedJobId(job.id)
       setCurrentStep('已取消')
     }
   }, [])
@@ -325,6 +329,27 @@ function VideoStudio() {
       setCurrentStep('取消中')
     } catch {
       setError('取消失败，请稍后重试')
+    }
+  }
+
+  const retryJob = async () => {
+    if (!failedJobId || isProcessing) return
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${failedJobId}/retry`, { method: 'POST' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.error || '重试失败')
+      }
+      setError(null)
+      setResult(null)
+      setIsProcessing(true)
+      setProgress(0)
+      setCurrentStep('重新提交任务')
+      setJobStatus('pending')
+      setJobId(data.jobId)
+      startPolling(data.jobId)
+    } catch (err) {
+      setError(err.message || '重试失败')
     }
   }
 
@@ -477,6 +502,11 @@ function VideoStudio() {
           <div className="notice notice-error" role="alert">
             <span className="notice-mark">!</span>
             <p>{error}</p>
+            {failedJobId && !isProcessing && (
+              <button type="button" className="notice-retry" onClick={retryJob}>
+                重试
+              </button>
+            )}
           </div>
         )}
 

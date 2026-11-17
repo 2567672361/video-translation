@@ -2006,8 +2006,7 @@ async function runTranslationJob(jobId, videoPath, options) {
             throw error;
           }
 
-          // 清理临时文件
-          await safeUnlink(videoPath);
+          // 清理中间产物；原始视频保留，供失败重试使用（由定时清理负责回收）
           await safeUnlink(audioPath);
           await safeUnlink(subtitlePath);
 
@@ -2119,9 +2118,6 @@ async function runTranslationJob(jobId, videoPath, options) {
           // 步骤6：清理临时文件
           console.log('清理临时文件...');
           
-          // 清理原始视频文件（带重试避免EBUSY）
-          await safeUnlink(videoPath);
-          
           // 清理视频片段文件（原始和处理后的）
           const allChunkFiles = [...chunkPaths, ...processedVideoPaths];
           for (const file of allChunkFiles) {
@@ -2153,7 +2149,7 @@ async function runTranslationJob(jobId, videoPath, options) {
         
   } catch (error) {
     console.error('视频翻译处理失败:', error);
-    await safeUnlink(videoPath);
+    // 保留原始视频，便于用户重试；24 小时清理任务会回收
     throw error;
   }
 }
@@ -2185,6 +2181,36 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
   res.json({ success: true, jobId, status: 'canceling' });
 });
 
+
+app.post('/api/jobs/:id/retry', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  if (!['failed', 'canceled'].includes(job.status)) {
+    return res.status(409).json({ success: false, error: '只有失败或已取消的任务可以重试' });
+  }
+  if (!job.source_path || !fs.existsSync(job.source_path)) {
+    return res.status(409).json({ success: false, error: '原始文件已被清理，请重新上传' });
+  }
+
+  const jobId = crypto.randomUUID();
+  db.createJob({
+    id: jobId,
+    filename: job.filename,
+    fileSize: job.file_size,
+    sourcePath: job.source_path,
+    sourceLanguage: job.source_language,
+    targetLanguage: job.target_language
+  });
+  enqueueTranslateJob(jobId, job.source_path, {
+    sourceLanguage: job.source_language,
+    targetLanguage: job.target_language,
+    subtitleStyle: null
+  });
+
+  res.status(202).json({ success: true, jobId, retryOf: job.id });
+});
 
 // 安全解析临时目录内的文件名，阻止 ../、..\\ 造成的目录穿越
 const resolveTempFile = (rawName) => {

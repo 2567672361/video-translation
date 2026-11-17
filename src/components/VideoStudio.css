@@ -665,3 +665,23 @@
   outline: 2px solid var(--amber);
   outline-offset: -4px;
 }
+
+/* 失败提示里的重试按钮 */
+.notice-retry {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--ink-2);
+  color: var(--paper);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  transition: border-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+.notice-retry:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
