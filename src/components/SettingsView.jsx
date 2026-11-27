@@ -3,6 +3,13 @@ import './SettingsView.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
+const MODEL_SUGGESTIONS = [
+  'doubao-seed-translation-250915',
+  'doubao-seed-2-0-pro-260215',
+  'doubao-seed-2-0-lite-260128',
+  'doubao-seed-1-6-250615',
+]
+
 const FIELDS = [
   { key: 'volcApiKey', label: '火山 API Key', type: 'password' },
   { key: 'volcAppId', label: '火山 APP ID', type: 'text' },
@@ -97,12 +104,19 @@ function SettingsView({ onBack }) {
             留空表示保持不变；已配置的凭据显示为掩码。保存后立即用于后续任务，无需重启。
           </p>
 
+          <datalist id="model-options">
+            {MODEL_SUGGESTIONS.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+
           <div className="settings-fields">
             {FIELDS.map((field) => (
               <label key={field.key} className="settings-field">
                 <span>{field.label}</span>
                 <input
                   type={field.type}
+                  list={field.key === 'doubaoModel' ? 'model-options' : undefined}
                   placeholder={masked ? masked[field.key] || '未配置' : ''}
                   value={form[field.key] || ''}
                   onChange={(event) => setForm((prev) => ({ ...prev, [field.key]: event.target.value }))}
@@ -132,19 +146,34 @@ function SettingsView({ onBack }) {
           {usage.summary.length === 0 ? (
             <p className="readout readout-muted">暂无用量记录，跑一次翻译后这里会累计。</p>
           ) : (
+            <>
+              <div className="usage-overview">
+              <span className="usage-chip">
+                总调用 <b className="mono">{usage.summary.reduce((sum, row) => sum + Number(row.calls || 0), 0)}</b>
+              </span>
+              <span className="usage-chip">
+                总字符 <b className="mono">{usage.summary.reduce((sum, row) => sum + Number(row.chars || 0), 0)}</b>
+              </span>
+              <span className="usage-chip">
+                模型数 <b className="mono">{new Set(usage.summary.map((row) => row.model || row.provider)).size}</b>
+              </span>
+            </div>
+
             <table className="usage-table">
               <thead>
                 <tr>
                   <th>提供方</th>
+                  <th>模型</th>
                   <th>操作</th>
-                  <th>调用次数</th>
-                  <th>字符数</th>
+                  <th>调用</th>
+                  <th>字符</th>
                 </tr>
               </thead>
               <tbody>
                 {usage.summary.map((row) => (
-                  <tr key={`${row.provider}-${row.operation}`}>
+                  <tr key={`${row.provider}-${row.model}-${row.operation}`}>
                     <td>{row.provider}</td>
+                    <td className="usage-model">{row.model || '-'}</td>
                     <td>{row.operation}</td>
                     <td className="mono">{row.calls}</td>
                     <td className="mono">{row.chars || 0}</td>
@@ -152,6 +181,7 @@ function SettingsView({ onBack }) {
                 ))}
               </tbody>
             </table>
+            </>
           )}
 
           <p className="panel-title" style={{ marginTop: 16 }}>
@@ -165,7 +195,7 @@ function SettingsView({ onBack }) {
                 <tr>
                   <th>时间</th>
                   <th>任务</th>
-                  <th>提供方</th>
+                  <th>提供方 / 模型</th>
                   <th>字符</th>
                 </tr>
               </thead>
@@ -174,7 +204,7 @@ function SettingsView({ onBack }) {
                   <tr key={row.id}>
                     <td className="mono">{row.created_at}</td>
                     <td className="usage-file">{row.filename || row.job_id || '-'}</td>
-                    <td>{row.provider}/{row.operation}</td>
+                    <td>{row.provider}/{row.model || '-'} · {row.operation}</td>
                     <td className="mono">{row.chars || 0}</td>
                   </tr>
                 ))}

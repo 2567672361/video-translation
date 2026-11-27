@@ -111,7 +111,12 @@ for (const row of repair) {
 
 try {
   // 字幕人工编辑所需列（老库自动补齐）
-  const translationColumns = db.prepare('PRAGMA table_info(translations)').all().map((row) => row.name);
+  const usageColumns = db.prepare('PRAGMA table_info(usage_events)').all().map((row) => row.name);
+if (usageColumns.length > 0 && !usageColumns.includes('model')) {
+  db.exec('ALTER TABLE usage_events ADD COLUMN model TEXT');
+}
+
+const translationColumns = db.prepare('PRAGMA table_info(translations)').all().map((row) => row.name);
   if (!translationColumns.includes('ai_translated_text')) {
     db.exec('ALTER TABLE translations ADD COLUMN ai_translated_text TEXT');
   }
@@ -313,22 +318,23 @@ function jobIdForVideo(filename) {
   return row ? row.id : null;
 }
 
-function recordUsage(jobId, provider, operation, chars = 0) {
-  db.prepare('INSERT INTO usage_events (job_id, provider, operation, chars) VALUES (?, ?, ?, ?)').run(
+function recordUsage(jobId, provider, operation, chars = 0, model = null) {
+  db.prepare('INSERT INTO usage_events (job_id, provider, operation, chars, model) VALUES (?, ?, ?, ?, ?)').run(
     jobId || null,
     provider,
     operation,
     Math.max(0, Math.round(Number(chars) || 0)),
+    model || null,
   );
 }
 
 function usageSummary() {
   const totals = db
-    .prepare('SELECT provider, operation, COUNT(*) AS calls, SUM(chars) AS chars FROM usage_events GROUP BY provider, operation ORDER BY provider, operation')
+    .prepare('SELECT provider, model, operation, COUNT(*) AS calls, SUM(chars) AS chars FROM usage_events GROUP BY provider, model, operation ORDER BY provider, model, operation')
     .all();
   const recent = db
     .prepare(
-      `SELECT u.id, u.job_id, u.provider, u.operation, u.chars, u.created_at, j.filename
+      `SELECT u.id, u.job_id, u.provider, u.model, u.operation, u.chars, u.created_at, j.filename
          FROM usage_events u LEFT JOIN jobs j ON j.id = u.job_id
         ORDER BY u.id DESC LIMIT 50`,
     )

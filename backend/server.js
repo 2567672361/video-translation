@@ -1382,7 +1382,7 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
 
     allTranslated.push(...translatedArray);
     try {
-      db.recordUsage(currentJobId(), 'doubao', 'translate', batchText.length);
+      db.recordUsage(currentJobId(), 'doubao', 'translate', batchText.length, DOUBAO_MODEL);
     } catch (error) {
       console.error('记录翻译用量失败:', error.message);
     }
@@ -1959,7 +1959,7 @@ const processVideoChunk = async (chunkPath, sourceLanguage, targetLanguage, subt
     console.log(`ASR识别结果: ${subtitles.length} 条字幕`);
     try {
       const chars = subtitles.reduce((sum, item) => sum + String(item.text || '').length, 0);
-      db.recordUsage(currentJobId(), 'volc', 'asr', chars);
+      db.recordUsage(currentJobId(), 'volc', 'asr', chars, 'seedasr');
     } catch (error) {
       console.error('记录识别用量失败:', error.message);
     }
@@ -2186,7 +2186,7 @@ async function runTranslationJob(jobId, videoPath, options) {
             sendProgress('语音识别', 40, `字幕生成成功，生成${subtitles.length}个字幕片段`);
             try {
               const chars = subtitles.reduce((sum, item) => sum + String(item.text || '').length, 0);
-              db.recordUsage(currentJobId(), 'volc', 'asr', chars);
+              db.recordUsage(currentJobId(), 'volc', 'asr', chars, 'seedasr');
             } catch (error) {
               console.error('记录识别用量失败:', error.message);
             }
@@ -2481,7 +2481,7 @@ app.post('/api/jobs/:id/render', (req, res) => {
       db.updateJob(job.id, { videoUrl: `/uploads/${path.basename(outputPath)}` });
       db.setRenderStatus(job.id, 'done');
       try {
-        db.recordUsage(job.id, 'ffmpeg', 'render', 0);
+        db.recordUsage(job.id, 'ffmpeg', 'render', 0, 'ffmpeg');
       } catch (error) {
         console.error('记录合成用量失败:', error.message);
       }
