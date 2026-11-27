@@ -341,6 +341,17 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     setError(null)
   }
 
+  const deleteRow = (index) => {
+    if (rows.length <= 1) {
+      setError('至少保留一条字幕')
+      return
+    }
+    setRows((prev) => prev.filter((_, i) => i !== index))
+    setSelected((prev) => (prev === index ? -1 : prev > index ? prev - 1 : prev))
+    setError(null)
+    setMessage(`已删除第 ${index + 1} 条，记得保存`)
+  }
+
   const mergeRow = (index) => {
     if (index >= rows.length - 1) return
     const current = rows[index]
@@ -589,6 +600,14 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
                         disabled={index >= rows.length - 1}
                       >
                         合并
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-danger"
+                        onClick={() => deleteRow(index)}
+                        disabled={rows.length <= 1}
+                      >
+                        删除
                       </button>
                     </div>
                   </div>

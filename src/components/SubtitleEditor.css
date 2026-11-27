@@ -451,3 +451,9 @@
 .sub-edit-row.is-match {
   border-left-color: var(--mint);
 }
+
+
+.btn-danger:hover:not(:disabled) {
+  color: var(--coral);
+  border-color: rgba(226, 104, 79, 0.5);
+}
