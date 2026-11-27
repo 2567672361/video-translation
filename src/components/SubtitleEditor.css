@@ -61,7 +61,7 @@
 
 .sub-edit-line {
   display: grid;
-  grid-template-columns: 22px 86px 10px 86px auto;
+  grid-template-columns: 22px 86px 10px 86px minmax(0, 1fr);
   align-items: center;
   gap: 6px;
 }
@@ -128,7 +128,7 @@
   }
 
   .sub-edit-line {
-    grid-template-columns: 20px 82px 8px 82px auto;
+    grid-template-columns: 20px 82px 8px 82px minmax(0, 1fr);
   }
 }
 
@@ -154,3 +154,17 @@
   }
 }
 
+
+
+.sub-row-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.sub-row-actions .btn {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 11px;
+}

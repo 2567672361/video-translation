@@ -149,12 +149,71 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     }
   }
 
+  const splitRow = (index) => {
+    const row = rows[index]
+    const start = parseMs(row.start_text)
+    const end = parseMs(row.end_text)
+    const text = row.translated_text.trim()
+    if (Number.isNaN(start) || Number.isNaN(end) || end - start < 200) {
+      setError('这条时间太短，无法拆分')
+      return
+    }
+    if (text.length < 4) {
+      setError('这条文本太短，无法拆分')
+      return
+    }
+
+    let cut = Math.floor(text.length / 2)
+    const marks = []
+    for (let i = 1; i < text.length - 1; i += 1) {
+      if (/[，。！？,.!?;；、\s]/.test(text[i])) marks.push(i)
+    }
+    if (marks.length > 0) {
+      cut = marks.reduce((best, pos) => (Math.abs(pos - text.length / 2) < Math.abs(best - text.length / 2) ? pos : best))
+    }
+
+    const left = text.slice(0, cut).trim()
+    const right = text.slice(cut).trim()
+    if (!left || !right) {
+      setError('这条文本无法在中间拆分')
+      return
+    }
+
+    const ratio = left.length / (left.length + right.length)
+    const mid = Math.round(start + (end - start) * ratio)
+    const first = { ...row, end_text: formatMs(mid), translated_text: left, ai_text: left }
+    const second = { ...row, start_text: formatMs(Math.min(mid + 50, end - 50)), translated_text: right, ai_text: right }
+    setRows((prev) => [...prev.slice(0, index), first, second, ...prev.slice(index + 1)])
+    setError(null)
+  }
+
+  const mergeRow = (index) => {
+    if (index >= rows.length - 1) return
+    const current = rows[index]
+    const next = rows[index + 1]
+    const merged = {
+      ...current,
+      end_text: next.end_text,
+      translated_text: `${current.translated_text} ${next.translated_text}`.trim(),
+      ai_text: `${current.ai_text} ${next.ai_text}`.trim(),
+    }
+    setRows((prev) => [...prev.slice(0, index), merged, ...prev.slice(index + 2)])
+    setError(null)
+  }
+
+  const handleKeyDown = (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault()
+      if (dirtyIndexes.length > 0 && !saving) handleSave()
+    }
+  }
+
   const restoreAi = () => {
     setRows((prev) => prev.map((row) => ({ ...row, translated_text: row.ai_text })))
   }
 
   return (
-    <div className="sub-editor">
+    <div className="sub-editor" onKeyDown={handleKeyDown}>
       <div className="sub-editor-head">
         <span className="panel-title">字幕</span>
         <div className="sub-editor-actions">
@@ -186,9 +245,22 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
                   onChange={(event) => updateRow(index, 'end_text', event.target.value)}
                   aria-label={`第 ${index + 1} 条结束时间`}
                 />
-                <button type="button" className="btn btn-quiet" onClick={() => onSeek?.({ start_ms: parseMs(row.start_text) || 0 })}>
-                  定位
-                </button>
+                <div className="sub-row-actions">
+                  <button type="button" className="btn btn-quiet" onClick={() => onSeek?.({ start_ms: parseMs(row.start_text) || 0 })}>
+                    定位
+                  </button>
+                  <button type="button" className="btn btn-quiet" onClick={() => splitRow(index)}>
+                    拆分
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={() => mergeRow(index)}
+                    disabled={index >= rows.length - 1}
+                  >
+                    合并
+                  </button>
+                </div>
               </div>
               <input
                 className="sub-text-input"
