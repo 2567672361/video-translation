@@ -2338,6 +2338,16 @@ app.put('/api/jobs/:id/subtitles', (req, res) => {
     return res.status(404).json({ success: false, error: '任务不存在' });
   }
 
+  const expectedVersion = req.body && req.body.expected_version;
+  if (expectedVersion && job.subtitles_updated_at && expectedVersion !== job.subtitles_updated_at) {
+    return res.status(409).json({
+      success: false,
+      error: '字幕已被其他窗口修改，请刷新后重试',
+      version: job.subtitles_updated_at,
+      subtitles: db.listSubtitles(job.id)
+    });
+  }
+
   const incoming = req.body && req.body.subtitles;
   if (!Array.isArray(incoming) || incoming.length === 0) {
     return res.status(400).json({ success: false, error: '至少保留一条字幕' });
@@ -2387,7 +2397,8 @@ app.put('/api/jobs/:id/subtitles', (req, res) => {
 
   try {
     const subtitles = db.replaceSubtitles(job.id, cleaned);
-    res.json({ success: true, subtitles, adjusted });
+    const updated = db.getJob(job.id);
+    res.json({ success: true, subtitles, adjusted, version: updated ? updated.subtitles_updated_at : null });
   } catch (error) {
     console.error('保存字幕失败:', error);
     res.status(500).json({ success: false, error: '保存字幕失败' });
@@ -2407,7 +2418,7 @@ app.get('/api/jobs/:id/subtitles', (req, res) => {
   if (!job) {
     return res.status(404).json({ success: false, error: '任务不存在' });
   }
-  res.json({ success: true, jobId: job.id, subtitles: db.listSubtitles(job.id) });
+  res.json({ success: true, jobId: job.id, version: job.subtitles_updated_at || null, subtitles: db.listSubtitles(job.id) });
 });
 
 app.get('/api/jobs/:id/subtitles.srt', (req, res) => {

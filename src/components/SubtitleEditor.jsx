@@ -46,6 +46,8 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
   const [editing, setEditing] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [drag, setDrag] = useState(null)
+  const [version, setVersion] = useState(null)
+  const [conflict, setConflict] = useState(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [query, setQuery] = useState('')
   const [jumpText, setJumpText] = useState('')
@@ -54,6 +56,25 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
   const ROW_H = 86
   const [insertStart, setInsertStart] = useState('')
   const [insertDuration, setInsertDuration] = useState('2')
+
+  useEffect(() => {
+    if (!jobId) return undefined
+    let cancelled = false
+    const loadVersion = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/jobs/${jobId}/subtitles`)
+        if (!response.ok) return
+        const data = await response.json()
+        if (!cancelled) setVersion(data.version || null)
+      } catch {
+        /* 版本读取失败时按无锁处理 */
+      }
+    }
+    loadVersion()
+    return () => {
+      cancelled = true
+    }
+  }, [jobId])
 
   useEffect(() => {
     if (selected < 0 || !listRef.current) return
@@ -255,10 +276,17 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
       const response = await fetch(`${API_URL}/api/jobs/${jobId}/subtitles`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subtitles: payload }),
+        body: JSON.stringify({ subtitles: payload, expected_version: version }),
       })
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
+      if (response.status === 409) {
+        setConflict(data)
+        setError(data.error || '字幕已被其他窗口修改，请刷新后重试')
+        return
+      }
       if (!response.ok) throw new Error(data.error || '保存失败')
+      setConflict(null)
+      setVersion(data.version || version)
       onSaved?.(data.subtitles)
       setMessage(data.adjusted ? `已保存，自动修正 ${data.adjusted} 处时间重叠` : '已保存')
     } catch (err) {
@@ -625,6 +653,22 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
         </div>
         {rows.length === 0 && <div className="sub-empty">暂无字幕数据</div>}
       </div>
+
+      {conflict && (
+        <button
+          type="button"
+          className="btn btn-quiet"
+          onClick={() => {
+            onSaved?.(conflict.subtitles || [])
+            setVersion(conflict.version || null)
+            setConflict(null)
+            setError(null)
+            setMessage('已载入最新字幕，请重新编辑')
+          }}
+        >
+          载入最新字幕
+        </button>
+      )}
 
       {(error || renderError || message) && (
         <p className={error || renderError ? 'sub-editor-message is-error' : 'sub-editor-message'} role="status">

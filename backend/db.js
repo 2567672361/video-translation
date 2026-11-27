@@ -268,7 +268,7 @@ function replaceSubtitles(jobId, subtitles = []) {
         aiText === item.translated_text ? 0 : 1,
       );
     });
-    db.prepare("UPDATE jobs SET subtitles_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(jobId);
+    db.prepare("UPDATE jobs SET subtitles_updated_at = strftime('%Y-%m-%d %H:%M:%f','now'), updated_at = datetime('now') WHERE id = ?").run(jobId);
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
