@@ -76,4 +76,6 @@ function update(patch = {}) {
   return masked();
 }
 
-module.exports = { ALLOWED, get, all, masked, update };
+const PROVIDERS = ['doubao', 'qwen', 'deepseek', 'openai', 'iflytek'];
+
+module.exports = { ALLOWED, PROVIDERS, get, all, masked, update };

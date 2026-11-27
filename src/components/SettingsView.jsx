@@ -11,6 +11,16 @@ const MODEL_SUGGESTIONS = [
   'qwen-max',
   'deepseek-chat',
   'gpt-4o-mini',
+  'generalv3.5',
+  '4.0Ultra',
+]
+
+const PROVIDERS = [
+  { value: 'doubao', label: '豆包（火山方舟）' },
+  { value: 'qwen', label: '千问（DashScope 兼容）', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  { value: 'deepseek', label: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { value: 'openai', label: 'OpenAI', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { value: 'iflytek', label: '讯飞星火（HTTP 兼容）', base: 'https://spark-api-open.xf-yun.com/v1', model: 'generalv3.5' },
 ]
 
 const OPENAI_FIELDS = [
@@ -124,10 +134,21 @@ function SettingsView({ onBack }) {
             <span>翻译接口</span>
             <select
               value={form.translationProvider ?? masked?.translationProvider ?? 'doubao'}
-              onChange={(event) => setForm((prev) => ({ ...prev, translationProvider: event.target.value }))}
+              onChange={(event) => {
+                const provider = event.target.value
+                const preset = PROVIDERS.find((item) => item.value === provider)
+                setForm((prev) => ({
+                  ...prev,
+                  translationProvider: provider,
+                  ...(preset?.base ? { openaiBaseUrl: preset.base, openaiModel: preset.model } : {}),
+                }))
+              }}
             >
-              <option value="doubao">豆包（火山方舟）</option>
-              <option value="openai">OpenAI 兼容接口（千问 / DeepSeek / OpenAI）</option>
+              {PROVIDERS.map((provider) => (
+                <option key={provider.value} value={provider.value}>
+                  {provider.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -147,7 +168,7 @@ function SettingsView({ onBack }) {
             ))}
           </div>
 
-          {(form.translationProvider ?? masked?.translationProvider) === 'openai' && (
+          {(form.translationProvider ?? masked?.translationProvider ?? 'doubao') !== 'doubao' && (
             <div className="settings-fields">
               {OPENAI_FIELDS.map((field) => (
                 <label key={field.key} className="settings-field">

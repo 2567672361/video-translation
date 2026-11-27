@@ -463,6 +463,12 @@ let TRANSLATION_PROVIDER = 'doubao';
 let OPENAI_BASE_URL = '';
 let OPENAI_API_KEY = '';
 let OPENAI_MODEL = '';
+const TRANSLATION_PRESETS = {
+  qwen: { base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', label: '千问（DashScope 兼容）' },
+  deepseek: { base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', label: 'DeepSeek' },
+  openai: { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', label: 'OpenAI' },
+  iflytek: { base: 'https://spark-api-open.xf-yun.com/v1', model: 'generalv3.5', label: '讯飞星火（HTTP 兼容）' }
+};
 
 function refreshCredentials() {
   VOLC_API_KEY = settings.get('volcApiKey');
@@ -680,6 +686,9 @@ app.put('/api/settings', (req, res) => {
   const patch = {};
   for (const key of settings.ALLOWED) {
     if (key in body) patch[key] = body[key];
+  }
+  if (patch.translationProvider && !settings.PROVIDERS.includes(patch.translationProvider)) {
+    return res.status(400).json({ success: false, error: '不支持的翻译接口' });
   }
   const masked = settings.update(patch);
   refreshCredentials();
@@ -1276,21 +1285,23 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
     translationOptions.source_language = normalizeLang(sourceLanguage, translationOptions.target_language);
   }
 
-  const provider = TRANSLATION_PROVIDER === 'openai' ? 'openai' : 'doubao';
+  const provider = TRANSLATION_PROVIDER || 'doubao';
+  const compatible = provider !== 'doubao';
+  const preset = TRANSLATION_PRESETS[provider] || {};
   const batchSize = 25;
   const totalBatches = Math.ceil(subtitles.length / batchSize);
   const allTranslated = [];
 
   const requestBatch = async (text, expectLines) => {
-    if (provider === 'openai') {
-      const base = String(OPENAI_BASE_URL || '').replace(/\/+$/, '');
+    if (compatible) {
+      const base = String(OPENAI_BASE_URL || preset.base || '').replace(/\/+$/, '');
       if (!base || !OPENAI_API_KEY) {
-        throw new Error('第三方翻译接口未配置（baseUrl / apiKey）');
+        throw new Error('翻译接口未配置（baseUrl / apiKey）');
       }
       const response = await axios.post(
         `${base}/chat/completions`,
         {
-          model: OPENAI_MODEL || 'qwen-plus',
+          model: OPENAI_MODEL || preset.model || 'qwen-plus',
           temperature: 0.2,
           messages: [
             { role: 'system', content: `你是专业字幕翻译助手。把用户给出的每一行翻译成${targetLangName}，严格保持行数与顺序，不合并、不解释、不添加编号。` },
@@ -1341,7 +1352,7 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
 
     allTranslated.push(...lines);
     try {
-      db.recordUsage(currentJobId(), provider, 'translate', batchText.length, provider === 'openai' ? OPENAI_MODEL : DOUBAO_MODEL);
+      db.recordUsage(currentJobId(), provider, 'translate', batchText.length, compatible ? (OPENAI_MODEL || preset.model) : DOUBAO_MODEL);
     } catch (error) {
       console.error('记录翻译用量失败:', error.message);
     }
