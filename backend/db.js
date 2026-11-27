@@ -78,19 +78,23 @@ for (const row of repair) {
   }
 }
 
-// 字幕人工编辑所需列（老库自动补齐）
-const translationColumns = db.prepare('PRAGMA table_info(translations)').all().map((row) => row.name);
-if (!translationColumns.includes('ai_translated_text')) {
-  db.exec('ALTER TABLE translations ADD COLUMN ai_translated_text TEXT');
-}
-if (!translationColumns.includes('is_edited')) {
-  db.exec('ALTER TABLE translations ADD COLUMN is_edited INTEGER DEFAULT 0');
-}
-if (!translationColumns.includes('updated_at')) {
-  db.exec('ALTER TABLE translations ADD COLUMN updated_at TEXT');
-}
+try {
+  // 字幕人工编辑所需列（老库自动补齐）
+  const translationColumns = db.prepare('PRAGMA table_info(translations)').all().map((row) => row.name);
+  if (!translationColumns.includes('ai_translated_text')) {
+    db.exec('ALTER TABLE translations ADD COLUMN ai_translated_text TEXT');
+  }
+  if (!translationColumns.includes('is_edited')) {
+    db.exec('ALTER TABLE translations ADD COLUMN is_edited INTEGER DEFAULT 0');
+  }
+  if (!translationColumns.includes('updated_at')) {
+    db.exec('ALTER TABLE translations ADD COLUMN updated_at TEXT');
+  }
 
-db.exec('UPDATE translations SET ai_translated_text = translated_text WHERE ai_translated_text IS NULL');
+  db.exec('UPDATE translations SET ai_translated_text = translated_text WHERE ai_translated_text IS NULL');
+} catch (error) {
+  console.warn('数据库结构升级跳过:', error.message);
+}
 
 const stmtInsertJob = db.prepare(`
   INSERT INTO jobs (id, filename, file_size, source_path, source_language, target_language, status, created_at, updated_at)
