@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './SubtitleEditor.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
@@ -30,15 +31,19 @@ const toRows = (subtitles) =>
 /**
  * 字幕编辑器：行内改译文与时间码，整批保存。
  */
-function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, onRendered }) {
+function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, onRendered, overlayHost, isPlaying = false }) {
   const baseline = useMemo(() => toRows(subtitles), [subtitles])
   const [rows, setRows] = useState(baseline)
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [shiftSeconds, setShiftSeconds] = useState('0.5')
   const [renderStatus, setRenderStatus] = useState('idle')
   const [renderError, setRenderError] = useState(null)
   const renderTimer = useRef(null)
+  const [selected, setSelected] = useState(-1)
+  const [editing, setEditing] = useState(false)
+  const [zoom, setZoom] = useState(1)
 
   useEffect(() => {
     setRows(baseline)
@@ -62,6 +67,20 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     }
     return list
   }, [])
+
+  const selectRow = (index) => {
+    if (index < 0 || index >= rows.length) return
+    setSelected(index)
+    setEditing(false)
+    onSeek?.({ start_ms: parseMs(rows[index].start_text) || 0 })
+  }
+
+  const timelineTotal = useMemo(() => {
+    const ends = rows.map((row) => parseMs(row.end_text)).filter((value) => Number.isFinite(value) && value > 0)
+    return ends.length > 0 ? Math.max(...ends) : 1
+  }, [rows])
+
+  const selectedRow = selected >= 0 ? rows[selected] : null
 
   const updateRow = (index, field, value) => {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)))
@@ -208,6 +227,31 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     }
   }
 
+  const shiftAll = (deltaMs) => {
+    if (!deltaMs) return
+    setRows((prev) =>
+      prev.map((row) => {
+        const start = parseMs(row.start_text)
+        const end = parseMs(row.end_text)
+        if (Number.isNaN(start) || Number.isNaN(end)) return row
+        const nextStart = Math.max(0, start + deltaMs)
+        const nextEnd = Math.max(nextStart + 100, end + deltaMs)
+        return { ...row, start_text: formatMs(nextStart), end_text: formatMs(nextEnd) }
+      }),
+    )
+    setError(null)
+    setMessage(`已整体平移 ${deltaMs > 0 ? '+' : ''}${deltaMs / 1000}s，记得保存`)
+  }
+
+  const applyShiftInput = () => {
+    const seconds = Number(shiftSeconds)
+    if (!Number.isFinite(seconds) || seconds === 0) {
+      setError('请输入非零的平移秒数，例如 0.5 或 -0.3')
+      return
+    }
+    shiftAll(Math.round(seconds * 1000))
+  }
+
   const restoreAi = () => {
     setRows((prev) => prev.map((row) => ({ ...row, translated_text: row.ai_text })))
   }
@@ -225,11 +269,72 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
         </div>
       </div>
 
+      <div className="sub-shift">
+        <span className="sub-shift-label">整体平移</span>
+        <button type="button" className="btn btn-quiet" onClick={() => shiftAll(-500)}>-0.5s</button>
+        <button type="button" className="btn btn-quiet" onClick={() => shiftAll(-100)}>-0.1s</button>
+        <button type="button" className="btn btn-quiet" onClick={() => shiftAll(100)}>+0.1s</button>
+        <button type="button" className="btn btn-quiet" onClick={() => shiftAll(500)}>+0.5s</button>
+        <input
+          className="sub-shift-input mono"
+          value={shiftSeconds}
+          onChange={(event) => setShiftSeconds(event.target.value)}
+          aria-label="平移秒数"
+        />
+        <button type="button" className="btn btn-quiet" onClick={applyShiftInput}>
+          应用
+        </button>
+      </div>
+
+      <div className="sub-timeline">
+        <div className="sub-timeline-toolbar">
+          <span className="sub-shift-label">轨道</span>
+          {[1, 2, 4].map((level) => (
+            <button
+              key={level}
+              type="button"
+              className={`btn btn-quiet ${zoom === level ? 'is-on' : ''}`}
+              onClick={() => setZoom(level)}
+            >
+              {level}x
+            </button>
+          ))}
+          <span className="sub-timeline-hint mono">共 {Math.max(rows.length, 1)} 条 · 总长 {formatMs(timelineTotal)}</span>
+        </div>
+        <div className="sub-timeline-scroll">
+          <div className="sub-timeline-track" style={{ width: `${zoom * 100}%` }}>
+            {rows.map((row, index) => {
+              const start = parseMs(row.start_text)
+              const end = parseMs(row.end_text)
+              if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+              const left = Math.max(0, (start / timelineTotal) * 100)
+              const width = Math.max(((end - start) / timelineTotal) * 100, 0.4)
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  className={`sub-block ${index === selected ? 'is-selected' : ''} ${index === activeIndex ? 'is-active' : ''}`}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                  title={`${formatMs(start)} - ${formatMs(end)} ${row.translated_text.slice(0, 20)}`}
+                  onClick={() => selectRow(index)}
+                >
+                  {index + 1}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
       <ol className="sub-edit-list">
         {rows.map((row, index) => {
           const isDirty = dirtyIndexes.includes(index)
           return (
-            <li key={index} className={`sub-edit-row ${index === activeIndex ? 'is-active' : ''} ${isDirty ? 'is-dirty' : ''}`}>
+            <li
+              key={index}
+              className={`sub-edit-row ${index === activeIndex ? 'is-active' : ''} ${index === selected ? 'is-selected' : ''} ${isDirty ? 'is-dirty' : ''}`}
+              onClick={() => setSelected(index)}
+            >
               <div className="sub-edit-line">
                 <span className="sub-index mono">{String(index + 1).padStart(2, '0')}</span>
                 <input
@@ -280,6 +385,34 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
           {error || renderError || message}
         </p>
       )}
+
+      {overlayHost && selectedRow &&
+        createPortal(
+          <div
+            className={`caption-overlay ${editing ? 'is-editing' : ''} ${isPlaying ? 'is-playing' : ''}`}
+            onClick={() => {
+              if (!isPlaying) setEditing(true)
+            }}
+            title={isPlaying ? '暂停后可编辑' : '点击编辑当前字幕'}
+          >
+            {editing ? (
+              <input
+                autoFocus
+                className="caption-overlay-input"
+                value={selectedRow.translated_text}
+                onChange={(event) => updateRow(selected, 'translated_text', event.target.value)}
+                onBlur={() => setEditing(false)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') setEditing(false)
+                  if (event.key === 'Escape') setEditing(false)
+                }}
+              />
+            ) : (
+              <span>{selectedRow.translated_text}</span>
+            )}
+          </div>,
+          overlayHost,
+        )}
 
       <div className="sub-editor-footer">
         <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving || dirtyIndexes.length === 0}>

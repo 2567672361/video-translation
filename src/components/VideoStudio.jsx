@@ -85,6 +85,8 @@ function VideoStudio() {
   const [subtitles, setSubtitles] = useState([])
   const [activeSub, setActiveSub] = useState(-1)
   const videoRef = useRef(null)
+  const [overlayEl, setOverlayEl] = useState(null)
+  const [playing, setPlaying] = useState(false)
 
   const pollTimer = useRef(null)
   const activeJobId = useRef(null)
@@ -566,15 +568,18 @@ function VideoStudio() {
 
             {previewSrc && (
               <div className="editor-grid">
-                <div className="editor-player">
+                <div className="editor-player video-stage">
                   <video
                     ref={videoRef}
                     src={previewSrc}
                     controls
                     playsInline
                     onTimeUpdate={handleTimeUpdate}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
                     onError={() => setError('视频预览加载失败，可直接下载查看。')}
                   />
+                  <div className="caption-overlay-host" ref={setOverlayEl} />
                 </div>
                 <SubtitleEditor
                   jobId={jobId}
@@ -583,6 +588,8 @@ function VideoStudio() {
                   onSeek={seekToSubtitle}
                   onSaved={setSubtitles}
                   onRendered={(url) => setResult((prev) => (prev ? { ...prev, videoUrl: url } : prev))}
+                  overlayHost={overlayEl}
+                  isPlaying={playing}
                 />
               </div>
             )}

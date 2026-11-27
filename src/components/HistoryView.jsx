@@ -40,6 +40,8 @@ function HistoryView({ onBack }) {
   const [subtitles, setSubtitles] = useState([])
   const [activeSub, setActiveSub] = useState(-1)
   const videoRef = useRef(null)
+  const [overlayEl, setOverlayEl] = useState(null)
+  const [playing, setPlaying] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
   const load = useCallback(async () => {
@@ -238,13 +240,15 @@ function HistoryView({ onBack }) {
 
           {detail.video_url && (
             <div className="editor-grid">
-              <div className="editor-player">
+              <div className="editor-player video-stage">
                 <video
                   ref={videoRef}
                   className="history-video"
                   src={`${API_URL}${detail.video_url.replace('/uploads/', '/preview/')}`}
                   controls
                   playsInline
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
                   onTimeUpdate={() => {
                     const video = videoRef.current
                     if (!video) return
@@ -253,6 +257,7 @@ function HistoryView({ onBack }) {
                     setActiveSub((prev) => (prev === index ? prev : index))
                   }}
                 />
+                <div className="caption-overlay-host" ref={setOverlayEl} />
               </div>
               <SubtitleEditor
                 jobId={detail.id}
@@ -266,6 +271,8 @@ function HistoryView({ onBack }) {
                 }}
                 onSaved={setSubtitles}
                 onRendered={(url) => setDetail((prev) => (prev ? { ...prev, video_url: url } : prev))}
+                overlayHost={overlayEl}
+                isPlaying={playing}
               />
             </div>
           )}
