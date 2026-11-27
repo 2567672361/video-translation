@@ -2394,6 +2394,14 @@ app.put('/api/jobs/:id/subtitles', (req, res) => {
   }
 });
 
+app.get('/api/jobs/:id/downloads', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  res.json({ success: true, downloads: db.listDownloads(job.id) });
+});
+
 app.get('/api/jobs/:id/subtitles', (req, res) => {
   const job = db.getJob(req.params.id);
   if (!job) {
@@ -2419,6 +2427,11 @@ app.get('/api/jobs/:id/subtitles.srt', (req, res) => {
       return `${index + 1}\n${start} --> ${end}\n${text}\n`;
     })
     .join('\n');
+  try {
+    db.recordDownload(job.id, 'srt', `subtitle-${job.id.slice(0, 8)}.srt`);
+  } catch (error) {
+    console.error('记录字幕下载失败:', error.message);
+  }
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="subtitle-${job.id.slice(0, 8)}.srt"`);
   res.send(content);
@@ -2527,6 +2540,14 @@ app.get('/uploads/:filename', (req, res) => {
     return res.status(404).send('File not found');
   }
   
+  // 记录下载（用于「下载记录」展示）
+  try {
+    const jobId = db.jobIdForVideo(filename);
+    if (jobId) db.recordDownload(jobId, 'video', filename);
+  } catch (error) {
+    console.error('记录视频下载失败:', error.message);
+  }
+
   // 直接下载，不在下载后删除：文件由 24 小时/1GB 清理策略回收
   res.download(filePath, filename, (err) => {
     if (err) {

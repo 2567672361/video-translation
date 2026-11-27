@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './VideoStudio.css'
 import SubtitleEditor from './SubtitleEditor'
+import { downloadFile } from '../lib/download'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -598,9 +599,13 @@ function VideoStudio() {
             )}
 
             <div className="result-actions">
-              <a className="btn btn-primary" href={`${API_URL}${result.videoUrl}`} download>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => downloadFile(`${API_URL}${result.videoUrl}`, result.videoUrl.split('/').pop())}
+              >
                 下载翻译视频
-              </a>
+              </button>
               <button type="button" className="btn" onClick={resetFile}>
                 换一个素材
               </button>

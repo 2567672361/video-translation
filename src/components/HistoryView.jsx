@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './HistoryView.css'
 import SubtitleEditor from './SubtitleEditor'
+import { downloadFile } from '../lib/download'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -38,6 +39,7 @@ function HistoryView({ onBack }) {
   const [error, setError] = useState(null)
   const [detail, setDetail] = useState(null)
   const [subtitles, setSubtitles] = useState([])
+  const [downloads, setDownloads] = useState([])
   const [activeSub, setActiveSub] = useState(-1)
   const videoRef = useRef(null)
   const [overlayEl, setOverlayEl] = useState(null)
@@ -67,6 +69,17 @@ function HistoryView({ onBack }) {
     load()
   }, [load])
 
+  const refreshDownloads = useCallback(async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${id}/downloads`)
+      if (!response.ok) return
+      const data = await response.json()
+      setDownloads(Array.isArray(data.downloads) ? data.downloads : [])
+    } catch {
+      /* 忽略记录刷新失败 */
+    }
+  }, [])
+
   const openDetail = async (id) => {
     try {
       const response = await fetch(`${API_URL}/api/jobs/${id}`)
@@ -75,6 +88,7 @@ function HistoryView({ onBack }) {
       setDetail(data.job)
       setSubtitles([])
       setActiveSub(-1)
+      await refreshDownloads(id)
       if (data.job.status === 'succeeded') {
         const subRes = await fetch(`${API_URL}/api/jobs/${id}/subtitles`)
         if (subRes.ok) {
@@ -280,11 +294,26 @@ function HistoryView({ onBack }) {
             </div>
           )}
 
+          {downloads.length > 0 && (
+            <p className="history-meta mono">
+              下载记录：视频 {downloads.filter((item) => item.kind === 'video').length} 次 ·
+              SRT {downloads.filter((item) => item.kind === 'srt').length} 次 ·
+              最近 {formatTime(downloads[0].created_at)}
+            </p>
+          )}
+
           <div className="history-detail-actions">
             {detail.video_url && (
-              <a className="btn btn-primary" href={`${API_URL}${detail.video_url}`} download>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={async () => {
+                  await downloadFile(`${API_URL}${detail.video_url}`, detail.video_url.split('/').pop())
+                  refreshDownloads(detail.id)
+                }}
+              >
                 下载视频
-              </a>
+              </button>
             )}
             {(detail.status === 'failed' || detail.status === 'canceled') && (
               <button type="button" className="btn" onClick={() => retryJob(detail.id)}>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { downloadFile } from '../lib/download'
 import './SubtitleEditor.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
@@ -396,9 +397,13 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
         <span className="panel-title">字幕</span>
         <div className="sub-editor-actions">
           {jobId && (
-            <a className="btn btn-quiet" href={`${API_URL}/api/jobs/${jobId}/subtitles.srt`} download>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => downloadFile(`${API_URL}/api/jobs/${jobId}/subtitles.srt`, `subtitle-${jobId.slice(0, 8)}.srt`)}
+            >
               下载 SRT
-            </a>
+            </button>
           )}
         </div>
       </div>

@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS translations (
   translated_text TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_translations_job ON translations(job_id, sequence);
+CREATE TABLE IF NOT EXISTS downloads (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id     TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,
+  filename   TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_downloads_job ON downloads(job_id, created_at DESC);
+
 `);
 
 // 兼容早期版本数据库：缺列时补齐
@@ -274,6 +283,21 @@ function setRenderStatus(jobId, status, error = null) {
     .run(status, error, jobId);
 }
 
+function recordDownload(jobId, kind, filename) {
+  db.prepare('INSERT INTO downloads (job_id, kind, filename) VALUES (?, ?, ?)').run(jobId, kind, filename || null);
+}
+
+function listDownloads(jobId) {
+  return db
+    .prepare('SELECT id, kind, filename, created_at FROM downloads WHERE job_id = ? ORDER BY created_at DESC LIMIT 50')
+    .all(jobId);
+}
+
+function jobIdForVideo(filename) {
+  const row = db.prepare('SELECT id FROM jobs WHERE video_url = ? ORDER BY created_at DESC LIMIT 1').get(`/uploads/${filename}`);
+  return row ? row.id : null;
+}
+
 module.exports = {
   DB_PATH,
   createJob,
@@ -285,6 +309,9 @@ module.exports = {
   addSteps,
   addTranslations,
   listSubtitles,
+  recordDownload,
+  jobIdForVideo,
+  listDownloads,
   replaceSubtitles,
   setRenderStatus,
 };
