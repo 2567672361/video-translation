@@ -1058,12 +1058,6 @@ const translateTextWithDoubao = async (text, targetLanguage) => {
     };
 
     const targetLang = languageNames[targetLanguage] || targetLanguage;
-  const normalizeLang = (code, fallback) => ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar'].includes(code) ? code : fallback;
-  const TARGET_LANG_CODE = normalizeLang(targetLanguage, 'zh');
-  const translationOptions = { target_language: TARGET_LANG_CODE };
-  if (sourceLanguage && sourceLanguage !== 'auto') {
-    translationOptions.source_language = normalizeLang(sourceLanguage, TARGET_LANG_CODE);
-  }
     const requestId = generateUUID();
 
     // 根据用户提供的curl示例，使用Authorization: Bearer认证
@@ -1197,6 +1191,13 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
     'fr': '法文', 'de': '德文', 'es': '西班牙文', 'ru': '俄文', 'ar': '阿拉伯文'
   };
   const targetLang = languageNames[targetLanguage] || targetLanguage;
+
+  const normalizeLang = (code, fallback) => ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar'].includes(code) ? code : fallback;
+  const TARGET_LANG_CODE = normalizeLang(targetLanguage, 'zh');
+  const translationOptions = { target_language: TARGET_LANG_CODE };
+  if (sourceLanguage && sourceLanguage !== 'auto') {
+    translationOptions.source_language = normalizeLang(sourceLanguage, TARGET_LANG_CODE);
+  }
 
   const BATCH_SIZE = 25; // 每批最多25条，避免超时
   const totalBatches = Math.ceil(subtitles.length / BATCH_SIZE);
@@ -2557,6 +2558,7 @@ module.exports = {
   refineSubtitleTiming,
   processVideoChunk,
   mergeSubtitleData,
+  translateSubtitlesWithLLM,
   extractAudio,
   speechToTextWithTimestamps,
   translateTextWithVolc,
