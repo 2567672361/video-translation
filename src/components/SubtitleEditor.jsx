@@ -48,6 +48,10 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
   const [drag, setDrag] = useState(null)
   const [version, setVersion] = useState(null)
   const [conflict, setConflict] = useState(null)
+  const [fonts, setFonts] = useState([])
+  const [style, setStyle] = useState({ fontFamily: 'SimHei', fontSize: 24, position: 'bottom', margin: 36, color: '#FFFFFF' })
+  const [styleSaving, setStyleSaving] = useState(false)
+  const fontInputRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [query, setQuery] = useState('')
   const [jumpText, setJumpText] = useState('')
@@ -56,6 +60,38 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
   const ROW_H = 86
   const [insertStart, setInsertStart] = useState('')
   const [insertDuration, setInsertDuration] = useState('2')
+
+  useEffect(() => {
+    if (!jobId) return undefined
+    let cancelled = false
+    const load = async () => {
+      try {
+        const fontRes = await fetch(`${API_URL}/api/fonts`)
+        if (fontRes.ok) {
+          const fontData = await fontRes.json()
+          if (!cancelled) setFonts(Array.isArray(fontData.fonts) ? fontData.fonts : [])
+        }
+        const jobRes = await fetch(`${API_URL}/api/jobs/${jobId}`)
+        if (jobRes.ok) {
+          const jobData = await jobRes.json()
+          const raw = jobData.job && jobData.job.subtitle_style
+          if (raw && !cancelled) {
+            try {
+              setStyle((prev) => ({ ...prev, ...JSON.parse(raw) }))
+            } catch {
+              /* 忽略非法样式 */
+            }
+          }
+        }
+      } catch {
+        /* 忽略加载失败 */
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [jobId])
 
   useEffect(() => {
     if (!jobId) return undefined
@@ -157,6 +193,54 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
       selectRow(index)
     }
   }
+
+  const saveStyle = async () => {
+    setStyleSaving(true)
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${jobId}/style`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ style }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || '保存样式失败')
+      setStyle(data.style)
+      setMessage('样式已保存，点「重新合成视频」生效')
+      setError(null)
+    } catch (error) {
+      setError(error.message)
+    } finally {
+      setStyleSaving(false)
+    }
+  }
+
+  const uploadFont = async (file) => {
+    if (!file) return
+    try {
+      const body = new FormData()
+      body.append('font', file)
+      const response = await fetch(`${API_URL}/api/fonts`, { method: 'POST', body })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || '上传失败')
+      const fontRes = await fetch(`${API_URL}/api/fonts`)
+      if (fontRes.ok) {
+        const fontData = await fontRes.json()
+        setFonts(Array.isArray(fontData.fonts) ? fontData.fonts : [])
+      }
+      setStyle((prev) => ({ ...prev, fontFamily: data.font.family }))
+      setMessage(`字体「${data.font.name}」已上传并选用`)
+      setError(null)
+    } catch (error) {
+      setError(error.message)
+    }
+  }
+
+  const previewScale = (() => {
+    if (!overlayHost) return 1
+    const video = overlayHost.closest('.video-stage')?.querySelector('video')
+    if (!video || !video.videoHeight) return 1
+    return video.clientHeight ? video.clientHeight / video.videoHeight : 1
+  })()
 
   const insertCue = (startMs, durationMs = 2000) => {
     const start = Math.max(0, Math.round(Number(startMs) || 0))
@@ -464,6 +548,71 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
         </button>
       </div>
 
+      <div className="sub-style">
+        <span className="sub-shift-label">样式</span>
+        <select
+          className="sub-style-select"
+          value={style.fontFamily}
+          onChange={(event) => setStyle((prev) => ({ ...prev, fontFamily: event.target.value }))}
+        >
+          {fonts.map((font) => (
+            <option key={font.id} value={font.family}>
+              {font.name}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min="8"
+          max="120"
+          className="sub-style-number"
+          value={style.fontSize}
+          onChange={(event) => setStyle((prev) => ({ ...prev, fontSize: Number(event.target.value) }))}
+          aria-label="字幕字号"
+        />
+        <select
+          className="sub-style-select"
+          value={style.position}
+          onChange={(event) => setStyle((prev) => ({ ...prev, position: event.target.value }))}
+        >
+          <option value="top">顶部</option>
+          <option value="center">居中</option>
+          <option value="bottom">底部</option>
+        </select>
+        <input
+          type="number"
+          min="0"
+          max="400"
+          className="sub-style-number"
+          value={style.margin}
+          onChange={(event) => setStyle((prev) => ({ ...prev, margin: Number(event.target.value) }))}
+          aria-label="字幕边距"
+        />
+        <input
+          type="color"
+          className="sub-style-color"
+          value={style.color}
+          onChange={(event) => setStyle((prev) => ({ ...prev, color: event.target.value }))}
+          aria-label="字幕颜色"
+        />
+        <button type="button" className="btn btn-quiet" onClick={saveStyle} disabled={styleSaving}>
+          {styleSaving ? '保存中…' : '保存样式'}
+        </button>
+        <input
+          ref={fontInputRef}
+          type="file"
+          accept=".ttf,.otf"
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            uploadFont(event.target.files?.[0])
+            event.target.value = ''
+          }}
+        />
+        <button type="button" className="btn btn-quiet" onClick={() => fontInputRef.current?.click()}>
+          上传字体
+        </button>
+      </div>
+
       <div className="sub-timeline">
         <div className="sub-timeline-toolbar">
           <span className="sub-shift-label">轨道</span>
@@ -680,6 +829,13 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
         createPortal(
           <div
             className={`caption-overlay ${editing ? 'is-editing' : ''} ${isPlaying ? 'is-playing' : ''}`}
+            style={{
+              fontSize: `${Math.max(10, style.fontSize * previewScale)}px`,
+              color: style.color,
+              top: style.position === 'top' ? `${style.margin * previewScale}px` : undefined,
+              bottom: style.position === 'bottom' ? `${Math.max(46, style.margin * previewScale)}px` : undefined,
+              ...(style.position === 'center' ? { top: '50%', transform: 'translate(-50%, -50%)' } : {}),
+            }}
             onClick={() => {
               if (!isPlaying) setEditing(true)
             }}

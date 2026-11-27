@@ -72,6 +72,9 @@ const columns = db.prepare('PRAGMA table_info(jobs)').all().map((row) => row.nam
 if (!columns.includes('source_path')) {
   db.exec('ALTER TABLE jobs ADD COLUMN source_path TEXT');
 }
+if (!columns.includes('subtitle_style')) {
+  db.exec('ALTER TABLE jobs ADD COLUMN subtitle_style TEXT');
+}
 if (!columns.includes('render_status')) {
   db.exec("ALTER TABLE jobs ADD COLUMN render_status TEXT DEFAULT 'idle'");
 }
@@ -126,6 +129,7 @@ const stmtUpdateJob = db.prepare(`
          current_step = COALESCE(?, current_step),
          video_url = COALESCE(?, video_url),
          subtitle_url = COALESCE(?, subtitle_url),
+         subtitle_style = COALESCE(?, subtitle_style),
          error_message = COALESCE(?, error_message),
          updated_at = datetime('now')
    WHERE id = ?
@@ -161,6 +165,7 @@ function updateJob(id, fields = {}) {
     fields.currentStep || null,
     fields.videoUrl || null,
     fields.subtitleUrl || null,
+    fields.subtitleStyle || null,
     fields.errorMessage || null,
     id,
   );

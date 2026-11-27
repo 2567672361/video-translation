@@ -13,6 +13,7 @@ const expressWs = require('express-ws');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const crypto = require('node:crypto');
 const db = require('./db');
+const fonts = require('./fonts');
 require('dotenv').config();
 
 // 任务队列系统
@@ -636,6 +637,47 @@ const upload = multer({
     cb(error);
   }
 });
+
+// ---------- 字幕样式与字体 ----------
+function normalizeStyle(input) {
+  const style = input || {};
+  const family = String(style.fontFamily || style.fontName || 'SimHei').slice(0, 80);
+  return {
+    fontFamily: family,
+    fontSize: Math.min(Math.max(Number(style.fontSize) || 24, 8), 120),
+    position: ['top', 'center', 'bottom'].includes(style.position) ? style.position : 'bottom',
+    margin: Math.min(Math.max(Number(style.margin) || 36, 0), 400),
+    color: /^#[0-9a-fA-F]{6}$/.test(String(style.color || '')) ? String(style.color) : '#FFFFFF'
+  };
+}
+
+const fontUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
+
+app.get('/api/fonts', (req, res) => {
+  res.json({ success: true, fonts: fonts.listFonts() });
+});
+
+app.post('/api/fonts', fontUpload.single('font'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: '请选择字体文件' });
+    }
+    const saved = fonts.saveFont(req.file.buffer, req.file.originalname);
+    res.json({ success: true, font: saved });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/fonts', (req, res) => {
+  const id = req.query.id;
+  if (!id) {
+    return res.status(400).json({ success: false, error: '缺少字体 id' });
+  }
+  const removed = fonts.removeFont(String(id));
+  res.json({ success: removed });
+});
+
 
 // 提取音频
 const extractAudio = (videoPath, audioPath) => {
@@ -1560,6 +1602,53 @@ const formatTime = (ms) => {
 };
 
 // 合成字幕到视频
+// 把 SRT 转成 ASS，样式（字体/字号/位置/颜色）才能被 libass 可靠应用
+const buildAssContent = (srtContent, style, width, height) => {
+  const hex = String(style.color || '#FFFFFF').replace('#', '').padEnd(6, 'F').slice(0, 6);
+  const bgr = `${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toUpperCase();
+  const alignment = style.position === 'top' ? 8 : style.position === 'center' ? 5 : 2;
+  const fontSize = Math.min(Math.max(Number(style.fontSize) || 24, 8), 120);
+  const marginV = Math.min(Math.max(Number(style.margin) || 36, 0), 400);
+  const family = String(style.fontFamily || 'SimHei');
+  const playW = width || 1280;
+  const playH = height || 720;
+
+  const toAssTime = (value) => {
+    const match = /(\d+):(\d+):(\d+)[,.](\d+)/.exec(value.trim());
+    if (!match) return '0:00:00.00';
+    const [, h, m, sec, ms] = match;
+    return `${Number(h)}:${m}:${sec}.${String(Math.round(Number(ms) / 10)).padStart(2, '0')}`;
+  };
+
+  const events = [];
+  const blocks = srtContent.replace(/\r/g, '').split(/\n\s*\n/);
+  for (const block of blocks) {
+    const lines = block.split('\n').filter(Boolean);
+    const timeIndex = lines.findIndex((line) => line.includes('-->'));
+    if (timeIndex === -1) continue;
+    const [start, end] = lines[timeIndex].split('-->');
+    const text = lines.slice(timeIndex + 1).join('\N');
+    if (!text) continue;
+    events.push(`Dialogue: 0,${toAssTime(start)},${toAssTime(end)},Default,,0,0,0,,${text}`);
+  }
+
+  return `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${playW}
+PlayResY: ${playH}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${family},${fontSize},&H00${bgr},&H00${bgr},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,1,0,${alignment},40,40,${marginV},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events.join('\n')}
+`;
+};
+
 const addSubtitleToVideo = (videoPath, subtitlePath, outputPath, subtitleStyle = null) => {
   return new Promise((resolve, reject) => {
     // 确保输出目录存在
@@ -1607,30 +1696,49 @@ const addSubtitleToVideo = (videoPath, subtitlePath, outputPath, subtitleStyle =
     console.log(`字幕路径: ${wslSubtitlePath}`);
     console.log(`输出路径: ${wslOutputPath}`);
     
-    // 使用默认的视频质量设置
-    const videoQualityOptions = ['-crf', '18', '-preset', 'slow'];
-    
-    // 使用安装的中文字体，去掉force_style参数以避免FFmpeg错误
-    ffmpeg(wslVideoPath)
-      .output(wslOutputPath)
-      .outputOptions([
-        '-vf', `subtitles=${process.platform === 'win32' ? "'" + wslSubtitlePath.replace(/:/g, '\\:') + "'" : wslSubtitlePath}`,
-        ...videoQualityOptions
-      ])
-      .videoCodec('libx264')
-      .audioCodec('aac')
-      .on('start', (commandLine) => {
-        console.log('FFmpeg命令:', commandLine);
-      })
-      .on('end', () => resolve())
-      .on('error', (err) => {
-        console.error('FFmpeg错误:', err.message);
-        reject(err);
-      })
-      .on('stderr', (stderrLine) => {
-        console.log('FFmpeg stderr:', stderrLine);
-      })
-      .run();
+    const style = subtitleStyle || {};
+    ffmpeg.ffprobe(wslVideoPath, (probeError, metadata) => {
+      let originalSize = null;
+      if (!probeError && metadata && Array.isArray(metadata.streams)) {
+        const videoStream = metadata.streams.find((stream) => stream.codec_type === 'video');
+        if (videoStream && videoStream.width && videoStream.height) {
+          originalSize = `${videoStream.width}x${videoStream.height}`;
+        }
+      }
+
+      const width = originalSize ? Number(originalSize.split('x')[0]) : null;
+      const height = originalSize ? Number(originalSize.split('x')[1]) : null;
+      const assContent = buildAssContent(fs.readFileSync(subtitlePath, 'utf-8'), style, width, height);
+      const assPath = path.join(path.dirname(outputPath), `${Date.now()}_style.ass`);
+      fs.writeFileSync(assPath, assContent, 'utf-8');
+      const wslAssPath = process.platform === 'win32' ? assPath.replace(/\\/g, '/') : assPath;
+
+      const escapePath = (value) => value.replace(/\\/g, '/').replace(/:/g, '\\:');
+      const parts = [`filename='${escapePath(wslAssPath)}'`];
+      if (fonts.FONT_DIR) parts.push(`fontsdir='${escapePath(fonts.FONT_DIR)}'`);
+      if (originalSize) parts.push(`original_size=${originalSize}`);
+      const filter = `subtitles=${parts.join(':')}`;
+
+      console.log('字幕滤镜:', filter);
+
+      ffmpeg(wslVideoPath)
+        .output(wslOutputPath)
+        .outputOptions(['-vf', filter, '-crf', '18', '-preset', 'slow'])
+        .videoCodec('libx264')
+        .audioCodec('aac')
+        .on('start', (commandLine) => {
+          console.log('FFmpeg命令:', commandLine);
+        })
+        .on('end', () => resolve())
+        .on('error', (err) => {
+          console.error('FFmpeg错误:', err.message);
+          reject(err);
+        })
+        .on('stderr', (stderrLine) => {
+          console.log('FFmpeg stderr:', stderrLine);
+        })
+        .run();
+    });
   });
 };
 
@@ -1923,6 +2031,8 @@ app.post('/api/translate-video', upload.single('video'), async (req, res) => {
       sourceLanguage,
       targetLanguage
     });
+
+    db.updateJob(jobId, { subtitleStyle: JSON.stringify(normalizeStyle(parsedSubtitleStyle)) });
 
     // 立即返回任务标识，实际处理在队列中进行
     res.status(202).json({ success: true, jobId, status: 'pending' });
@@ -2313,12 +2423,13 @@ app.post('/api/jobs/:id/render', (req, res) => {
         text: item.translated_text || item.source_text || ''
       }));
       generateSubtitleWithTimestamps(timedSubtitles, subtitlePath);
-      await addSubtitleToVideo(job.source_path, subtitlePath, outputPath, {
-        fontName: 'WenQuanYi Micro Hei',
-        fontSize: 24,
-        fontColor: '#FFFFFF',
-        position: 'bottom'
-      });
+      let renderStyle = null;
+      try {
+        renderStyle = job.subtitle_style ? JSON.parse(job.subtitle_style) : null;
+      } catch (error) {
+        renderStyle = null;
+      }
+      await addSubtitleToVideo(job.source_path, subtitlePath, outputPath, normalizeStyle(renderStyle));
       await safeUnlink(subtitlePath);
       db.updateJob(job.id, { videoUrl: `/uploads/${path.basename(outputPath)}` });
       db.setRenderStatus(job.id, 'done');
@@ -2330,6 +2441,16 @@ app.post('/api/jobs/:id/render', (req, res) => {
       renderingJobs.delete(job.id);
     }
   })();
+});
+
+app.put('/api/jobs/:id/style', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  const style = normalizeStyle(req.body && req.body.style);
+  db.updateJob(job.id, { subtitleStyle: JSON.stringify(style) });
+  res.json({ success: true, style });
 });
 
 app.put('/api/jobs/:id/subtitles', (req, res) => {
