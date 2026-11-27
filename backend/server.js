@@ -2527,18 +2527,10 @@ app.get('/uploads/:filename', (req, res) => {
     return res.status(404).send('File not found');
   }
   
-  // 发送文件并在下载完成后删除
+  // 直接下载，不在下载后删除：文件由 24 小时/1GB 清理策略回收
   res.download(filePath, filename, (err) => {
     if (err) {
       console.error('下载失败:', err);
-    } else {
-      // 下载成功后删除文件
-      try {
-        fs.unlinkSync(filePath);
-        console.log(`文件已下载并删除: ${filename}`);
-      } catch (error) {
-        console.error('删除文件失败:', error);
-      }
     }
   });
 });
