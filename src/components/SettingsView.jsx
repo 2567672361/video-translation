@@ -7,7 +7,16 @@ const MODEL_SUGGESTIONS = [
   'doubao-seed-translation-250915',
   'doubao-seed-2-0-pro-260215',
   'doubao-seed-2-0-lite-260128',
-  'doubao-seed-1-6-250615',
+  'qwen-plus',
+  'qwen-max',
+  'deepseek-chat',
+  'gpt-4o-mini',
+]
+
+const OPENAI_FIELDS = [
+  { key: 'openaiBaseUrl', label: '第三方 Base URL（如 https://dashscope.aliyuncs.com/compatible-mode/v1）' },
+  { key: 'openaiApiKey', label: '第三方 API Key', type: 'password' },
+  { key: 'openaiModel', label: '第三方模型名（如 qwen-plus）' },
 ]
 
 const FIELDS = [
@@ -59,7 +68,8 @@ function SettingsView({ onBack }) {
         const value = (form[field.key] || '').trim()
         if (value) payload[field.key] = value
       }
-      if (Object.keys(payload).length === 0) {
+      payload.translationProvider = form.translationProvider || masked?.translationProvider || 'doubao'
+      if (Object.keys(payload).length === 1 && !form.openaiBaseUrl && !form.openaiApiKey && !form.openaiModel) {
         setMessage('没有需要保存的改动（留空表示保持不变）')
         return
       }
@@ -110,6 +120,17 @@ function SettingsView({ onBack }) {
             ))}
           </datalist>
 
+          <label className="settings-field">
+            <span>翻译接口</span>
+            <select
+              value={form.translationProvider ?? masked?.translationProvider ?? 'doubao'}
+              onChange={(event) => setForm((prev) => ({ ...prev, translationProvider: event.target.value }))}
+            >
+              <option value="doubao">豆包（火山方舟）</option>
+              <option value="openai">OpenAI 兼容接口（千问 / DeepSeek / OpenAI）</option>
+            </select>
+          </label>
+
           <div className="settings-fields">
             {FIELDS.map((field) => (
               <label key={field.key} className="settings-field">
@@ -125,6 +146,23 @@ function SettingsView({ onBack }) {
               </label>
             ))}
           </div>
+
+          {(form.translationProvider ?? masked?.translationProvider) === 'openai' && (
+            <div className="settings-fields">
+              {OPENAI_FIELDS.map((field) => (
+                <label key={field.key} className="settings-field">
+                  <span>{field.label}</span>
+                  <input
+                    type={field.type || 'text'}
+                    placeholder={masked ? masked[field.key] || '未配置' : ''}
+                    value={form[field.key] || ''}
+                    onChange={(event) => setForm((prev) => ({ ...prev, [field.key]: event.target.value }))}
+                    autoComplete="off"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
 
           <div className="settings-status mono">
             火山：{masked?.configured?.volc ? '已配置' : '未配置'} · 豆包：

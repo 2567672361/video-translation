@@ -6,13 +6,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const FILE = path.join(__dirname, 'data', 'settings.json');
-const ALLOWED = ['volcApiKey', 'volcAppId', 'volcAccessToken', 'doubaoApiKey', 'doubaoModel'];
+const ALLOWED = ['volcApiKey', 'volcAppId', 'volcAccessToken', 'doubaoApiKey', 'doubaoModel', 'translationProvider', 'openaiBaseUrl', 'openaiApiKey', 'openaiModel'];
 const ENV_KEYS = {
   volcApiKey: 'VOLC_API_KEY',
   volcAppId: 'VOLC_APP_ID',
   volcAccessToken: 'VOLC_ACCESS_TOKEN',
   doubaoApiKey: 'DOUBAO_API_KEY',
   doubaoModel: 'DOUBAO_MODEL',
+  translationProvider: 'TRANSLATION_PROVIDER',
+  openaiBaseUrl: 'OPENAI_BASE_URL',
+  openaiApiKey: 'OPENAI_API_KEY',
+  openaiModel: 'OPENAI_MODEL',
 };
 
 let cache = {};
@@ -41,9 +45,14 @@ function mask(value) {
   return `${text.slice(0, 4)}…${text.slice(-4)}`;
 }
 
+const PLAIN_KEYS = new Set(['volcAppId', 'doubaoModel', 'translationProvider', 'openaiBaseUrl', 'openaiModel']);
+
 function masked() {
   const result = {};
-  for (const key of ALLOWED) result[key] = mask(get(key));
+  for (const key of ALLOWED) {
+    const value = get(key);
+    result[key] = PLAIN_KEYS.has(key) ? value : mask(value);
+  }
   result.configured = {
     volc: Boolean(get('volcApiKey') && get('volcAppId') && get('volcAccessToken')),
     doubao: Boolean(get('doubaoApiKey')),

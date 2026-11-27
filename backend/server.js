@@ -459,6 +459,10 @@ let DOUBAO_API_KEY = ''; // 豆包大模型API密钥
 let VOLC_APP_ID = ''; // 火山引擎APP ID
 let VOLC_ACCESS_TOKEN = ''; // 火山引擎访问令牌
 let DOUBAO_MODEL = 'doubao-seed-2-0-pro-260215'; // 豆包模型名称
+let TRANSLATION_PROVIDER = 'doubao';
+let OPENAI_BASE_URL = '';
+let OPENAI_API_KEY = '';
+let OPENAI_MODEL = '';
 
 function refreshCredentials() {
   VOLC_API_KEY = settings.get('volcApiKey');
@@ -466,6 +470,10 @@ function refreshCredentials() {
   VOLC_APP_ID = settings.get('volcAppId');
   VOLC_ACCESS_TOKEN = settings.get('volcAccessToken');
   DOUBAO_MODEL = settings.get('doubaoModel') || 'doubao-seed-2-0-pro-260215';
+  TRANSLATION_PROVIDER = settings.get('translationProvider') || 'doubao';
+  OPENAI_BASE_URL = settings.get('openaiBaseUrl');
+  OPENAI_API_KEY = settings.get('openaiApiKey');
+  OPENAI_MODEL = settings.get('openaiModel');
 }
 refreshCredentials();
 
@@ -1259,143 +1267,88 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
   if (!subtitles || subtitles.length === 0) return subtitles;
 
   const languageNames = {
-    'zh': '中文', 'en': '英文', 'ja': '日文', 'ko': '韩文',
-    'fr': '法文', 'de': '德文', 'es': '西班牙文', 'ru': '俄文', 'ar': '阿拉伯文'
+    zh: '中文', en: '英文', ja: '日文', ko: '韩文', fr: '法文', de: '德文', es: '西班牙文', ru: '俄文', ar: '阿拉伯文'
   };
-  const targetLang = languageNames[targetLanguage] || targetLanguage;
-
+  const targetLangName = languageNames[targetLanguage] || targetLanguage;
   const normalizeLang = (code, fallback) => ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar'].includes(code) ? code : fallback;
-  const TARGET_LANG_CODE = normalizeLang(targetLanguage, 'zh');
-  const translationOptions = { target_language: TARGET_LANG_CODE };
+  const translationOptions = { target_language: normalizeLang(targetLanguage, 'zh') };
   if (sourceLanguage && sourceLanguage !== 'auto') {
-    translationOptions.source_language = normalizeLang(sourceLanguage, TARGET_LANG_CODE);
+    translationOptions.source_language = normalizeLang(sourceLanguage, translationOptions.target_language);
   }
 
-  const BATCH_SIZE = 25; // 每批最多25条，避免超时
-  const totalBatches = Math.ceil(subtitles.length / BATCH_SIZE);
-  console.log(`逐句翻译：共 ${subtitles.length} 条字幕，分 ${totalBatches} 批处理`);
-
+  const provider = TRANSLATION_PROVIDER === 'openai' ? 'openai' : 'doubao';
+  const batchSize = 25;
+  const totalBatches = Math.ceil(subtitles.length / batchSize);
   const allTranslated = [];
 
-  for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
-    const start = batchIdx * BATCH_SIZE;
-    const end = Math.min(start + BATCH_SIZE, subtitles.length);
-    const batch = subtitles.slice(start, end);
-
-    console.log(`翻译第 ${batchIdx + 1}/${totalBatches} 批 (${start + 1}-${end})...`);
-
-    // 翻译模型text字段只放纯文本，用换行分隔
-    const batchText = batch.map(s => s.text).join('\n');
-
-    const requestBody = {
-      "model": "doubao-seed-translation-250915",
-      "input": [
+  const requestBatch = async (text, expectLines) => {
+    if (provider === 'openai') {
+      const base = String(OPENAI_BASE_URL || '').replace(/\/+$/, '');
+      if (!base || !OPENAI_API_KEY) {
+        throw new Error('第三方翻译接口未配置（baseUrl / apiKey）');
+      }
+      const response = await axios.post(
+        `${base}/chat/completions`,
         {
-          "role": "user",
-          "content": [
-            {
-              "type": "input_text",
-              "text": batchText,
-              translation_options: translationOptions
-            }
+          model: OPENAI_MODEL || 'qwen-plus',
+          temperature: 0.2,
+          messages: [
+            { role: 'system', content: `你是专业字幕翻译助手。把用户给出的每一行翻译成${targetLangName}，严格保持行数与顺序，不合并、不解释、不添加编号。` },
+            { role: 'user', content: `[必须输出恰好${expectLines}行，每行对应原文一行]\n${text}` }
           ]
-        }
-      ]
-    };
+        },
+        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, timeout: 120000 }
+      );
+      return String(response.data?.choices?.[0]?.message?.content || '').trim();
+    }
 
-    const response = await axios.post('https://ark.cn-beijing.volces.com/api/v3/responses', requestBody, {
-      headers: {
-        'Authorization': `Bearer ${DOUBAO_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+    const body = {
+      model: DOUBAO_MODEL,
+      input: [{ role: 'user', content: [{ type: 'input_text', text, translation_options: translationOptions }] }]
+    };
+    const response = await axios.post('https://ark.cn-beijing.volces.com/api/v3/responses', body, {
+      headers: { Authorization: `Bearer ${DOUBAO_API_KEY}`, 'Content-Type': 'application/json' },
       timeout: 120000
     });
+    let translated = '';
+    if (response.data?.output && Array.isArray(response.data.output)) {
+      const message = response.data.output.find((item) => item.type === 'message');
+      const content = message?.content?.find((item) => item.type === 'output_text');
+      translated = content?.text || '';
+    }
+    if (!translated && response.data?.choices?.[0]?.message?.content) {
+      translated = response.data.choices[0].message.content;
+    }
+    return String(translated).trim();
+  };
 
-    // 解析响应
-    let translatedText = '';
-    if (response.data && response.data.output && Array.isArray(response.data.output)) {
-      const messageOutput = response.data.output.find(item => item.type === 'message');
-      if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content)) {
-        const textContent = messageOutput.content.find(item => item.type === 'output_text');
-        if (textContent && textContent.text) {
-          translatedText = textContent.text.trim();
-        }
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
+    const start = batchIndex * batchSize;
+    const batch = subtitles.slice(start, Math.min(start + batchSize, subtitles.length));
+    const batchText = batch.map((item) => item.text).join('\n');
+
+    let lines = (await requestBatch(batchText, batch.length)).split('\n').map((line) => line.trim()).filter(Boolean);
+    if (lines.length !== batch.length) {
+      try {
+        const retryLines = (await requestBatch(batchText, batch.length)).split('\n').map((line) => line.trim()).filter(Boolean);
+        if (retryLines.length === batch.length) lines = retryLines;
+      } catch (error) {
+        console.warn('翻译重试失败:', error.message);
       }
-    }
-    if (!translatedText && response.data && response.data.choices && response.data.choices[0]) {
-      translatedText = response.data.choices[0].message.content.trim();
-    }
-
-    if (!translatedText) {
-      throw new Error(`第 ${batchIdx + 1} 批翻译返回空结果`);
+      while (lines.length < batch.length) lines.push('');
+      lines = lines.slice(0, batch.length);
     }
 
-    // 翻译结果按换行拆分，行号与原始字幕一一对应
-    let translatedArray = translatedText.split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
-
-    // 验证数量匹配 — 如果不匹配则重试一次（加明确行数要求）
-    if (translatedArray.length !== batch.length) {
-      console.warn(`第 ${batchIdx + 1} 批数量不匹配：期望 ${batch.length} 条，实际 ${translatedArray.length} 条，重试...`);
-      
-      // 重试：在纯文本前加行数提示
-      const retryText = `[必须翻译为恰好${batch.length}行，每行对应原文一行，不要合并]\n${batchText}`;
-      const retryBody = {
-        "model": "doubao-seed-translation-250915",
-        "input": [{
-          "role": "user",
-          "content": [{
-            "type": "input_text",
-            "text": retryText,
-            translation_options: translationOptions
-          }]
-        }]
-      };
-      const retryResp = await axios.post('https://ark.cn-beijing.volces.com/api/v3/responses', retryBody, {
-        headers: { 'Authorization': `Bearer ${DOUBAO_API_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 120000
-      });
-      let retryTranslated = '';
-      if (retryResp.data?.output) {
-        const msg = retryResp.data.output.find(item => item.type === 'message');
-        if (msg?.content) {
-          const txt = msg.content.find(item => item.type === 'output_text');
-          if (txt?.text) retryTranslated = txt.text.trim();
-        }
-      }
-      if (retryTranslated) {
-        const retryLines = retryTranslated.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        if (retryLines.length === batch.length) {
-          translatedArray = retryLines;
-          console.log(`第 ${batchIdx + 1} 批重试成功：${retryLines.length} 条`);
-        } else {
-          console.warn(`第 ${batchIdx + 1} 批重试仍不匹配：${retryLines.length} 条，使用补位`);
-          while (translatedArray.length < batch.length) translatedArray.push('');
-          translatedArray = translatedArray.slice(0, batch.length);
-        }
-      } else {
-        while (translatedArray.length < batch.length) translatedArray.push('');
-        translatedArray = translatedArray.slice(0, batch.length);
-      }
-    }
-
-    allTranslated.push(...translatedArray);
+    allTranslated.push(...lines);
     try {
-      db.recordUsage(currentJobId(), 'doubao', 'translate', batchText.length, DOUBAO_MODEL);
+      db.recordUsage(currentJobId(), provider, 'translate', batchText.length, provider === 'openai' ? OPENAI_MODEL : DOUBAO_MODEL);
     } catch (error) {
       console.error('记录翻译用量失败:', error.message);
     }
-    console.log(`第 ${batchIdx + 1} 批完成：${translatedArray.length} 条`);
   }
 
-  console.log(`全部翻译完成：共 ${allTranslated.length} 条`);
-
-  // 将翻译文本映射回原始时间轴
-  return subtitles.map((s, i) => ({
-    ...s,
-    text: allTranslated[i] || s.text
-  }));
+  console.log(`翻译完成：${allTranslated.length} 条（${provider}）`);
+  return subtitles.map((item, index) => ({ ...item, text: allTranslated[index] || item.text }));
 };
 
 // 使用对话模型对翻译和原文进行校准验证
