@@ -63,6 +63,12 @@ const columns = db.prepare('PRAGMA table_info(jobs)').all().map((row) => row.nam
 if (!columns.includes('source_path')) {
   db.exec('ALTER TABLE jobs ADD COLUMN source_path TEXT');
 }
+if (!columns.includes('render_status')) {
+  db.exec("ALTER TABLE jobs ADD COLUMN render_status TEXT DEFAULT 'idle'");
+}
+if (!columns.includes('render_error')) {
+  db.exec('ALTER TABLE jobs ADD COLUMN render_error TEXT');
+}
 if (!columns.includes('subtitles_updated_at')) {
   db.exec('ALTER TABLE jobs ADD COLUMN subtitles_updated_at TEXT');
 }
@@ -263,6 +269,11 @@ function replaceSubtitles(jobId, subtitles = []) {
   return listSubtitles(jobId);
 }
 
+function setRenderStatus(jobId, status, error = null) {
+  db.prepare("UPDATE jobs SET render_status = ?, render_error = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(status, error, jobId);
+}
+
 module.exports = {
   DB_PATH,
   createJob,
@@ -275,4 +286,5 @@ module.exports = {
   addTranslations,
   listSubtitles,
   replaceSubtitles,
+  setRenderStatus,
 };

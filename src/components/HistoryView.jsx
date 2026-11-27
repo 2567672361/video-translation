@@ -265,6 +265,7 @@ function HistoryView({ onBack }) {
                   if (video.paused) video.play().catch(() => {})
                 }}
                 onSaved={setSubtitles}
+                onRendered={(url) => setDetail((prev) => (prev ? { ...prev, video_url: url } : prev))}
               />
             </div>
           )}

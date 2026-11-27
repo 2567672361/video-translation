@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './SubtitleEditor.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
@@ -30,12 +30,15 @@ const toRows = (subtitles) =>
 /**
  * 字幕编辑器：行内改译文与时间码，整批保存。
  */
-function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved }) {
+function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, onRendered }) {
   const baseline = useMemo(() => toRows(subtitles), [subtitles])
   const [rows, setRows] = useState(baseline)
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [renderStatus, setRenderStatus] = useState('idle')
+  const [renderError, setRenderError] = useState(null)
+  const renderTimer = useRef(null)
 
   useEffect(() => {
     setRows(baseline)
@@ -46,6 +49,10 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved })
     setMessage(null)
     setError(null)
   }, [jobId])
+
+  useEffect(() => () => {
+    if (renderTimer.current) clearTimeout(renderTimer.current)
+  }, [])
 
   const dirtyIndexes = rows.reduce((list, row, index) => {
     const base = baseline[index]
@@ -107,6 +114,41 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved })
     }
   }
 
+  const handleRender = async () => {
+    setRenderError(null)
+    setMessage(null)
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${jobId}/render`, { method: 'POST' })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || '合成失败')
+      setRenderStatus('running')
+
+      const poll = async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/jobs/${jobId}/render`)
+          const info = await res.json()
+          if (info.render_status === 'done') {
+            setRenderStatus('done')
+            setMessage('合成完成，视频已更新')
+            onRendered?.(info.video_url)
+            return
+          }
+          if (info.render_status === 'failed') {
+            setRenderStatus('failed')
+            setRenderError(info.render_error || '合成失败')
+            return
+          }
+          renderTimer.current = setTimeout(poll, 1500)
+        } catch {
+          renderTimer.current = setTimeout(poll, 2000)
+        }
+      }
+      renderTimer.current = setTimeout(poll, 800)
+    } catch (err) {
+      setRenderError(err.message || '合成失败')
+    }
+  }
+
   const restoreAi = () => {
     setRows((prev) => prev.map((row) => ({ ...row, translated_text: row.ai_text })))
   }
@@ -161,9 +203,9 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved })
         {rows.length === 0 && <li className="sub-empty">暂无字幕数据</li>}
       </ol>
 
-      {(error || message) && (
-        <p className={error ? 'sub-editor-message is-error' : 'sub-editor-message'} role="status">
-          {error || message}
+      {(error || renderError || message) && (
+        <p className={error || renderError ? 'sub-editor-message is-error' : 'sub-editor-message'} role="status">
+          {error || renderError || message}
         </p>
       )}
 
@@ -176,6 +218,14 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved })
         </button>
         <button type="button" className="btn btn-quiet" onClick={restoreAi} disabled={saving}>
           恢复 AI 译文
+        </button>
+        <button
+          type="button"
+          className="btn"
+          onClick={handleRender}
+          disabled={saving || renderStatus === 'running' || dirtyIndexes.length > 0}
+        >
+          {renderStatus === 'running' ? '合成中…' : '重新合成视频'}
         </button>
       </div>
     </div>

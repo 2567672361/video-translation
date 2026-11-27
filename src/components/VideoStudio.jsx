@@ -582,6 +582,7 @@ function VideoStudio() {
                   activeIndex={activeSub}
                   onSeek={seekToSubtitle}
                   onSaved={setSubtitles}
+                  onRendered={(url) => setResult((prev) => (prev ? { ...prev, videoUrl: url } : prev))}
                 />
               </div>
             )}

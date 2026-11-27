@@ -543,6 +543,7 @@ const clients = new Set();
 const jobContext = new AsyncLocalStorage();
 // 已请求取消的任务
 const cancelledJobs = new Set();
+const renderingJobs = new Set();
 
 function currentJobId() {
   const store = jobContext.getStore();
@@ -2263,6 +2264,71 @@ app.get('/api/jobs/:id', (req, res) => {
     return res.status(404).json({ success: false, error: '任务不存在' });
   }
   res.json({ success: true, job });
+});
+
+app.get('/api/jobs/:id/render', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  res.json({
+    success: true,
+    render_status: job.render_status || 'idle',
+    render_error: job.render_error || null,
+    video_url: job.video_url || null
+  });
+});
+
+app.post('/api/jobs/:id/render', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  if (job.status !== 'succeeded') {
+    return res.status(409).json({ success: false, error: '只有已完成的任务可以重新合成' });
+  }
+  if (renderingJobs.has(job.id)) {
+    return res.status(409).json({ success: false, error: '正在合成中，请稍候' });
+  }
+  if (!job.source_path || !fs.existsSync(job.source_path)) {
+    return res.status(409).json({ success: false, error: '源视频已被清理，请重新上传后再合成' });
+  }
+  const subtitles = db.listSubtitles(job.id);
+  if (subtitles.length === 0) {
+    return res.status(400).json({ success: false, error: '暂无字幕，无法合成' });
+  }
+
+  renderingJobs.add(job.id);
+  db.setRenderStatus(job.id, 'running');
+  res.status(202).json({ success: true, render_status: 'running' });
+
+  (async () => {
+    try {
+      const subtitlePath = fileManager.getTempFilePath(`${Date.now()}_edited.srt`);
+      const outputPath = fileManager.getTempFilePath(`${Date.now()}_edited.mp4`);
+      const timedSubtitles = subtitles.map((item) => ({
+        start_time: Number(item.start_ms) || 0,
+        end_time: Number(item.end_ms) || 0,
+        text: item.translated_text || item.source_text || ''
+      }));
+      generateSubtitleWithTimestamps(timedSubtitles, subtitlePath);
+      await addSubtitleToVideo(job.source_path, subtitlePath, outputPath, {
+        fontName: 'WenQuanYi Micro Hei',
+        fontSize: 24,
+        fontColor: '#FFFFFF',
+        position: 'bottom'
+      });
+      await safeUnlink(subtitlePath);
+      db.updateJob(job.id, { videoUrl: `/uploads/${path.basename(outputPath)}` });
+      db.setRenderStatus(job.id, 'done');
+      console.log(`任务 ${job.id} 字幕重新合成完成`);
+    } catch (error) {
+      console.error(`任务 ${job.id} 重新合成失败:`, error.message);
+      db.setRenderStatus(job.id, 'failed', String(error.message || '合成失败').split('\n')[0].slice(0, 200));
+    } finally {
+      renderingJobs.delete(job.id);
+    }
+  })();
 });
 
 app.put('/api/jobs/:id/subtitles', (req, res) => {
