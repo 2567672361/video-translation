@@ -467,7 +467,8 @@ const TRANSLATION_PRESETS = {
   qwen: { base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', label: '千问（DashScope 兼容）' },
   deepseek: { base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', label: 'DeepSeek' },
   openai: { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', label: 'OpenAI' },
-  iflytek: { base: 'https://spark-api-open.xf-yun.com/v1', model: 'generalv3.5', label: '讯飞星火（HTTP 兼容）' }
+  iflytek: { base: 'https://spark-api-open.xf-yun.com/v1', model: 'generalv3.5', label: '讯飞星火（HTTP 兼容）' },
+  custom: { base: '', model: '', label: '自定义接口' }
 };
 
 function refreshCredentials() {
@@ -1295,13 +1296,14 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
   const requestBatch = async (text, expectLines) => {
     if (compatible) {
       const base = String(OPENAI_BASE_URL || preset.base || '').replace(/\/+$/, '');
-      if (!base || !OPENAI_API_KEY) {
-        throw new Error('翻译接口未配置（baseUrl / apiKey）');
+      const model = OPENAI_MODEL || preset.model;
+      if (!base || !OPENAI_API_KEY || !model) {
+        throw new Error('自定义接口未配置完整（baseUrl / apiKey / model）');
       }
       const response = await axios.post(
         `${base}/chat/completions`,
         {
-          model: OPENAI_MODEL || preset.model || 'qwen-plus',
+          model,
           temperature: 0.2,
           messages: [
             { role: 'system', content: `你是专业字幕翻译助手。把用户给出的每一行翻译成${targetLangName}，严格保持行数与顺序，不合并、不解释、不添加编号。` },

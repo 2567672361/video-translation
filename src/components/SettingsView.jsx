@@ -21,6 +21,7 @@ const PROVIDERS = [
   { value: 'deepseek', label: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { value: 'openai', label: 'OpenAI', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   { value: 'iflytek', label: '讯飞星火（HTTP 兼容）', base: 'https://spark-api-open.xf-yun.com/v1', model: 'generalv3.5' },
+  { value: 'custom', label: '自定义接口（OpenAI 兼容）' },
 ]
 
 const OPENAI_FIELDS = [
