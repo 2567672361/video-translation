@@ -373,3 +373,81 @@
   outline: none;
   border-color: var(--amber);
 }
+
+
+/* 轨道拖拽创建字幕 */
+.sub-timeline-track {
+  user-select: none;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.sub-drag-ghost {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  z-index: 3;
+  pointer-events: none;
+  border: 1px dashed var(--amber);
+  border-radius: 4px;
+  background: rgba(242, 181, 68, 0.28);
+  color: #1b1305;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 26px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* 搜索 + 时间跳转 */
+.sub-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sub-search .btn {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.sub-search-count {
+  min-width: 34px;
+  font-size: 10px;
+  color: var(--faint);
+  text-align: center;
+}
+
+/* 虚拟滚动列表 */
+.sub-edit-list {
+  display: block;
+  position: relative;
+  height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.sub-list-spacer {
+  position: relative;
+}
+
+.sub-list-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-edit-row {
+  height: 86px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.sub-edit-row.is-match {
+  border-left-color: var(--mint);
+}

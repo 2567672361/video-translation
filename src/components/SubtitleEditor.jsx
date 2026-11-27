@@ -44,8 +44,24 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
   const [selected, setSelected] = useState(-1)
   const [editing, setEditing] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const [drag, setDrag] = useState(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [query, setQuery] = useState('')
+  const [jumpText, setJumpText] = useState('')
+  const [matchCursor, setMatchCursor] = useState(0)
+  const listRef = useRef(null)
+  const ROW_H = 86
   const [insertStart, setInsertStart] = useState('')
   const [insertDuration, setInsertDuration] = useState('2')
+
+  useEffect(() => {
+    if (selected < 0 || !listRef.current) return
+    const element = listRef.current
+    const top = selected * ROW_H
+    if (top < element.scrollTop || top + ROW_H > element.scrollTop + element.clientHeight) {
+      element.scrollTop = Math.max(0, top - element.clientHeight / 2 + ROW_H / 2)
+    }
+  }, [selected])
 
   useEffect(() => {
     setRows(baseline)
@@ -85,6 +101,41 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     return ends.length > 0 ? Math.max(...ends) : 1
   }, [rows])
 
+  const matches = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (!keyword) return []
+    return rows.reduce((list, row, index) => {
+      if ((row.translated_text || '').toLowerCase().includes(keyword)) list.push(index)
+      return list
+    }, [])
+  }, [rows, query])
+
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_H) - 3)
+  const endIndex = Math.min(rows.length, Math.ceil((scrollTop + 360) / ROW_H) + 3)
+  const visibleRows = rows.slice(startIndex, endIndex).map((row, offset) => ({ row, index: startIndex + offset }))
+
+  const jumpMatch = (direction) => {
+    if (matches.length === 0) return
+    const next = (matchCursor + direction + matches.length) % matches.length
+    setMatchCursor(next)
+    setError(null)
+    selectRow(matches[next])
+  }
+
+  const jumpToTime = () => {
+    const ms = parseMs(jumpText)
+    if (Number.isNaN(ms)) {
+      setError('时间码格式应为 mm:ss.mmm')
+      return
+    }
+    let index = rows.findIndex((row) => (parseMs(row.end_text) || 0) > ms)
+    if (index < 0) index = rows.length - 1
+    if (index >= 0) {
+      setError(null)
+      selectRow(index)
+    }
+  }
+
   const insertCue = (startMs, durationMs = 2000) => {
     const start = Math.max(0, Math.round(Number(startMs) || 0))
     const end = start + Math.max(200, Math.round(Number(durationMs) || 2000))
@@ -117,6 +168,41 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
       return
     }
     insertCue(start, Math.round(seconds * 1000))
+    setInsertStart(formatMs(start))
+  }
+
+  const timeFromPointer = (event, element) => {
+    const rect = element.getBoundingClientRect()
+    const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
+    return Math.round(ratio * timelineTotal)
+  }
+
+  const handleTrackPointerDown = (event) => {
+    const element = event.currentTarget
+    const at = timeFromPointer(event, element)
+    setDrag({ startMs: at, currentMs: at })
+    setError(null)
+  }
+
+  const handleTrackPointerMove = (event) => {
+    if (!drag) return
+    const at = timeFromPointer(event, event.currentTarget)
+    setDrag((prev) => (prev ? { ...prev, currentMs: at } : prev))
+  }
+
+  const handleTrackPointerUp = (event) => {
+    if (!drag) return
+    const element = event.currentTarget
+    const at = timeFromPointer(event, element)
+    const start = Math.min(drag.startMs, at)
+    const finish = Math.max(drag.startMs, at)
+    setDrag(null)
+
+    if (finish - start < 250) {
+      onSeek?.({ start_ms: start })
+      return
+    }
+    insertCue(start, finish - start)
     setInsertStart(formatMs(start))
   }
 
@@ -377,7 +463,26 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
           <span className="sub-timeline-hint mono">共 {Math.max(rows.length, 1)} 条 · 总长 {formatMs(timelineTotal)}</span>
         </div>
         <div className="sub-timeline-scroll">
-          <div className="sub-timeline-track" style={{ width: `${zoom * 100}%` }} onDoubleClick={insertAtPointer}>
+          <div
+          className="sub-timeline-track"
+          style={{ width: `${zoom * 100}%` }}
+          onMouseDown={handleTrackPointerDown}
+          onMouseMove={handleTrackPointerMove}
+          onMouseUp={handleTrackPointerUp}
+          onMouseLeave={() => setDrag(null)}
+        >
+            {drag &&
+              (() => {
+                const from = Math.min(drag.startMs, drag.currentMs)
+                const to = Math.max(drag.startMs, drag.currentMs)
+                const left = Math.max(0, (from / timelineTotal) * 100)
+                const width = Math.max(((to - from) / timelineTotal) * 100, 0.3)
+                return (
+                  <div className="sub-drag-ghost" style={{ left: `${left}%`, width: `${width}%` }}>
+                    {formatMs(from)} – {formatMs(to)}
+                  </div>
+                )
+              })()}
             {rows.map((row, index) => {
               const start = parseMs(row.start_text)
               const end = parseMs(row.end_text)
@@ -401,59 +506,101 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
         </div>
       </div>
 
-      <ol className="sub-edit-list">
-        {rows.map((row, index) => {
-          const isDirty = dirtyIndexes.includes(index)
-          return (
-            <li
-              key={index}
-              className={`sub-edit-row ${index === activeIndex ? 'is-active' : ''} ${index === selected ? 'is-selected' : ''} ${isDirty ? 'is-dirty' : ''}`}
-              onClick={() => setSelected(index)}
-            >
-              <div className="sub-edit-line">
-                <span className="sub-index mono">{String(index + 1).padStart(2, '0')}</span>
-                <input
-                  className="sub-time-input mono"
-                  value={row.start_text}
-                  onChange={(event) => updateRow(index, 'start_text', event.target.value)}
-                  aria-label={`第 ${index + 1} 条开始时间`}
-                />
-                <span className="sub-dash">→</span>
-                <input
-                  className="sub-time-input mono"
-                  value={row.end_text}
-                  onChange={(event) => updateRow(index, 'end_text', event.target.value)}
-                  aria-label={`第 ${index + 1} 条结束时间`}
-                />
-                <div className="sub-row-actions">
-                  <button type="button" className="btn btn-quiet" onClick={() => onSeek?.({ start_ms: parseMs(row.start_text) || 0 })}>
-                    定位
-                  </button>
-                  <button type="button" className="btn btn-quiet" onClick={() => splitRow(index)}>
-                    拆分
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-quiet"
-                    onClick={() => mergeRow(index)}
-                    disabled={index >= rows.length - 1}
-                  >
-                    合并
-                  </button>
+      <div className="sub-search">
+        <input
+          className="sub-search-input"
+          placeholder="搜索译文…"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setMatchCursor(0)
+          }}
+        />
+        <span className="sub-search-count mono">{query ? `${matches.length ? matchCursor + 1 : 0}/${matches.length}` : ''}</span>
+        <button type="button" className="btn btn-quiet" onClick={() => jumpMatch(-1)} disabled={matches.length === 0}>
+          ↑
+        </button>
+        <button type="button" className="btn btn-quiet" onClick={() => jumpMatch(1)} disabled={matches.length === 0}>
+          ↓
+        </button>
+        <input
+          className="sub-search-input mono"
+          placeholder="跳转 mm:ss.mmm"
+          value={jumpText}
+          onChange={(event) => setJumpText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') jumpToTime()
+          }}
+        />
+        <button type="button" className="btn btn-quiet" onClick={jumpToTime}>
+          跳转
+        </button>
+      </div>
+
+      <div
+        className="sub-edit-list"
+        ref={listRef}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      >
+        <div className="sub-list-spacer" style={{ height: `${rows.length * ROW_H}px` }}>
+          <div className="sub-list-window" style={{ top: `${startIndex * ROW_H}px` }}>
+            {visibleRows.map(({ row, index }) => {
+              const isDirty = dirtyIndexes.includes(index)
+              const keyword = query.trim().toLowerCase()
+              const isMatch = Boolean(keyword) && (row.translated_text || '').toLowerCase().includes(keyword)
+              return (
+                <div
+                  key={index}
+                  className={`sub-edit-row ${index === activeIndex ? 'is-active' : ''} ${index === selected ? 'is-selected' : ''} ${isDirty ? 'is-dirty' : ''} ${isMatch ? 'is-match' : ''}`}
+                  style={{ height: `${ROW_H}px` }}
+                  onClick={() => setSelected(index)}
+                >
+                  <div className="sub-edit-line">
+                    <span className="sub-index mono">{String(index + 1).padStart(2, '0')}</span>
+                    <input
+                      className="sub-time-input mono"
+                      value={row.start_text}
+                      onChange={(event) => updateRow(index, 'start_text', event.target.value)}
+                      aria-label={`第 ${index + 1} 条开始时间`}
+                    />
+                    <span className="sub-dash">→</span>
+                    <input
+                      className="sub-time-input mono"
+                      value={row.end_text}
+                      onChange={(event) => updateRow(index, 'end_text', event.target.value)}
+                      aria-label={`第 ${index + 1} 条结束时间`}
+                    />
+                    <div className="sub-row-actions">
+                      <button type="button" className="btn btn-quiet" onClick={() => onSeek?.({ start_ms: parseMs(row.start_text) || 0 })}>
+                        定位
+                      </button>
+                      <button type="button" className="btn btn-quiet" onClick={() => splitRow(index)}>
+                        拆分
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-quiet"
+                        onClick={() => mergeRow(index)}
+                        disabled={index >= rows.length - 1}
+                      >
+                        合并
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    className="sub-text-input"
+                    value={row.translated_text}
+                    onChange={(event) => updateRow(index, 'translated_text', event.target.value)}
+                    onFocus={() => onSeek?.({ start_ms: parseMs(row.start_text) || 0 })}
+                    aria-label={`第 ${index + 1} 条译文`}
+                  />
                 </div>
-              </div>
-              <input
-                className="sub-text-input"
-                value={row.translated_text}
-                onChange={(event) => updateRow(index, 'translated_text', event.target.value)}
-                onFocus={() => onSeek?.({ start_ms: parseMs(row.start_text) || 0 })}
-                aria-label={`第 ${index + 1} 条译文`}
-              />
-            </li>
-          )
-        })}
-        {rows.length === 0 && <li className="sub-empty">暂无字幕数据</li>}
-      </ol>
+              )
+            })}
+          </div>
+        </div>
+        {rows.length === 0 && <div className="sub-empty">暂无字幕数据</div>}
+      </div>
 
       {(error || renderError || message) && (
         <p className={error || renderError ? 'sub-editor-message is-error' : 'sub-editor-message'} role="status">
