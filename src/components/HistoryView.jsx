@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './HistoryView.css'
+import SubtitleList from './SubtitleList'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -36,6 +37,9 @@ function HistoryView({ onBack }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [subtitles, setSubtitles] = useState([])
+  const [activeSub, setActiveSub] = useState(-1)
+  const videoRef = useRef(null)
   const [busyId, setBusyId] = useState(null)
 
   const load = useCallback(async () => {
@@ -66,6 +70,15 @@ function HistoryView({ onBack }) {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || '读取失败')
       setDetail(data.job)
+      setSubtitles([])
+      setActiveSub(-1)
+      if (data.job.status === 'succeeded') {
+        const subRes = await fetch(`${API_URL}/api/jobs/${id}/subtitles`)
+        if (subRes.ok) {
+          const subData = await subRes.json()
+          setSubtitles(Array.isArray(subData.subtitles) ? subData.subtitles : [])
+        }
+      }
     } catch (err) {
       setError(err.message)
     }
@@ -224,12 +237,44 @@ function HistoryView({ onBack }) {
           </ol>
 
           {detail.video_url && (
-            <video
-              className="history-video"
-              src={`${API_URL}${detail.video_url.replace('/uploads/', '/preview/')}`}
-              controls
-              playsInline
-            />
+            <div className="editor-grid">
+              <div className="editor-player">
+                <video
+                  ref={videoRef}
+                  className="history-video"
+                  src={`${API_URL}${detail.video_url.replace('/uploads/', '/preview/')}`}
+                  controls
+                  playsInline
+                  onTimeUpdate={() => {
+                    const video = videoRef.current
+                    if (!video) return
+                    const ms = video.currentTime * 1000
+                    const index = subtitles.findIndex((item) => ms >= (item.start_ms || 0) && ms < (item.end_ms || 0))
+                    setActiveSub((prev) => (prev === index ? prev : index))
+                  }}
+                />
+              </div>
+              <div className="editor-subs">
+                <div className="editor-subs-head">
+                  <span className="panel-title">字幕</span>
+                  {subtitles.length > 0 && (
+                    <a className="btn btn-quiet" href={`${API_URL}/api/jobs/${detail.id}/subtitles.srt`} download>
+                      下载 SRT
+                    </a>
+                  )}
+                </div>
+                <SubtitleList
+                  subtitles={subtitles}
+                  activeIndex={activeSub}
+                  onSeek={(item) => {
+                    const video = videoRef.current
+                    if (!video) return
+                    video.currentTime = Math.max(0, (Number(item.start_ms) || 0) / 1000)
+                    if (video.paused) video.play().catch(() => {})
+                  }}
+                />
+              </div>
+            </div>
           )}
 
           <div className="history-detail-actions">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './VideoStudio.css'
+import SubtitleList from './SubtitleList'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -81,6 +82,9 @@ function VideoStudio() {
   const [jobStatus, setJobStatus] = useState('idle')
   const [history, setHistory] = useState([])
   const [failedJobId, setFailedJobId] = useState(null)
+  const [subtitles, setSubtitles] = useState([])
+  const [activeSub, setActiveSub] = useState(-1)
+  const videoRef = useRef(null)
 
   const pollTimer = useRef(null)
   const activeJobId = useRef(null)
@@ -231,12 +235,40 @@ function VideoStudio() {
     }
   }, [])
 
+  const loadSubtitles = useCallback(async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/api/jobs/${id}/subtitles`)
+      if (!response.ok) return
+      const data = await response.json()
+      setSubtitles(Array.isArray(data.subtitles) ? data.subtitles : [])
+    } catch {
+      setSubtitles([])
+    }
+  }, [])
+
+  const seekToSubtitle = useCallback((item) => {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = Math.max(0, (Number(item.start_ms) || 0) / 1000)
+    if (video.paused) video.play().catch(() => {})
+  }, [])
+
+  const handleTimeUpdate = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    const ms = video.currentTime * 1000
+    const index = subtitles.findIndex((item) => ms >= (item.start_ms || 0) && ms < (item.end_ms || 0))
+    setActiveSub((prev) => (prev === index ? prev : index))
+  }, [subtitles])
+
   const applyJob = useCallback((job) => {
     setProgress(job.progress || 0)
     setCurrentStep(job.current_step || '')
     setJobStatus(job.status)
     if (job.status === 'succeeded') {
       setResult({ videoUrl: job.video_url, steps: job.steps || [] })
+      setJobId(job.id)
+      loadSubtitles(job.id)
       setIsProcessing(false)
       setFailedJobId(null)
       setProgress(100)
@@ -250,7 +282,7 @@ function VideoStudio() {
       setFailedJobId(job.id)
       setCurrentStep('已取消')
     }
-  }, [])
+  }, [loadSubtitles])
 
   const pollJob = useCallback(async (id) => {
     try {
@@ -533,8 +565,28 @@ function VideoStudio() {
             )}
 
             {previewSrc && (
-              <div className="result-video">
-                <video src={previewSrc} controls playsInline onError={() => setError('视频预览加载失败，可直接下载查看。')} />
+              <div className="editor-grid">
+                <div className="editor-player">
+                  <video
+                    ref={videoRef}
+                    src={previewSrc}
+                    controls
+                    playsInline
+                    onTimeUpdate={handleTimeUpdate}
+                    onError={() => setError('视频预览加载失败，可直接下载查看。')}
+                  />
+                </div>
+                <div className="editor-subs">
+                  <div className="editor-subs-head">
+                    <span className="panel-title">字幕</span>
+                    {jobId && (
+                      <a className="btn btn-quiet" href={`${API_URL}/api/jobs/${jobId}/subtitles.srt`} download>
+                        下载 SRT
+                      </a>
+                    )}
+                  </div>
+                  <SubtitleList subtitles={subtitles} activeIndex={activeSub} onSeek={seekToSubtitle} />
+                </div>
               </div>
             )}
 

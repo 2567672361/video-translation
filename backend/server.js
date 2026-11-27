@@ -2265,6 +2265,36 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json({ success: true, job });
 });
 
+app.get('/api/jobs/:id/subtitles', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  res.json({ success: true, jobId: job.id, subtitles: db.listSubtitles(job.id) });
+});
+
+app.get('/api/jobs/:id/subtitles.srt', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  const subtitles = db.listSubtitles(job.id);
+  if (subtitles.length === 0) {
+    return res.status(404).send('暂无字幕');
+  }
+  const content = subtitles
+    .map((item, index) => {
+      const start = formatTime(Number(item.start_ms) || 0);
+      const end = formatTime(Number(item.end_ms) || 0);
+      const text = item.translated_text || item.source_text || '';
+      return `${index + 1}\n${start} --> ${end}\n${text}\n`;
+    })
+    .join('\n');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="subtitle-${job.id.slice(0, 8)}.srt"`);
+  res.send(content);
+});
+
 app.post('/api/jobs/:id/cancel', (req, res) => {
   const jobId = req.params.id;
   const job = db.getJob(jobId);

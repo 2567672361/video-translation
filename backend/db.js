@@ -78,6 +78,20 @@ for (const row of repair) {
   }
 }
 
+// 字幕人工编辑所需列（老库自动补齐）
+const translationColumns = db.prepare('PRAGMA table_info(translations)').all().map((row) => row.name);
+if (!translationColumns.includes('ai_translated_text')) {
+  db.exec('ALTER TABLE translations ADD COLUMN ai_translated_text TEXT');
+}
+if (!translationColumns.includes('is_edited')) {
+  db.exec('ALTER TABLE translations ADD COLUMN is_edited INTEGER DEFAULT 0');
+}
+if (!translationColumns.includes('updated_at')) {
+  db.exec('ALTER TABLE translations ADD COLUMN updated_at TEXT');
+}
+
+db.exec('UPDATE translations SET ai_translated_text = translated_text WHERE ai_translated_text IS NULL');
+
 const stmtInsertJob = db.prepare(`
   INSERT INTO jobs (id, filename, file_size, source_path, source_language, target_language, status, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
@@ -102,8 +116,8 @@ const stmtInsertStep = db.prepare(`
 `);
 const stmtStepsOfJob = db.prepare('SELECT name, status, message FROM job_steps WHERE job_id = ? ORDER BY id');
 const stmtInsertTranslation = db.prepare(`
-  INSERT INTO translations (job_id, sequence, start_ms, end_ms, source_text, translated_text)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO translations (job_id, sequence, start_ms, end_ms, source_text, translated_text, ai_translated_text)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 function createJob({ id, filename, fileSize, sourcePath, sourceLanguage, targetLanguage }) {
@@ -180,15 +194,28 @@ function addSteps(jobId, steps = []) {
 
 function addTranslations(jobId, subtitles = []) {
   subtitles.forEach((item, index) => {
+    const translated = item.text || item.translated_text || null;
     stmtInsertTranslation.run(
       jobId,
       index + 1,
       Number.isFinite(item.start_time) ? Math.round(item.start_time) : null,
       Number.isFinite(item.end_time) ? Math.round(item.end_time) : null,
       item.original_text || item.source_text || item.original || null,
-      item.text || item.translated_text || null,
+      translated,
+      translated,
     );
   });
+}
+
+function listSubtitles(jobId) {
+  return db
+    .prepare(
+      `SELECT id, sequence, start_ms, end_ms, source_text, translated_text, ai_translated_text, is_edited
+         FROM translations
+        WHERE job_id = ?
+        ORDER BY sequence`,
+    )
+    .all(jobId);
 }
 
 module.exports = {
@@ -201,4 +228,5 @@ module.exports = {
   deleteJob,
   addSteps,
   addTranslations,
+  listSubtitles,
 };
