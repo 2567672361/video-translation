@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS downloads (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_job ON downloads(job_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS usage_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id     TEXT,
+  provider   TEXT NOT NULL,
+  operation  TEXT NOT NULL,
+  chars      INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_events(created_at DESC);
+
 
 `);
 
@@ -303,6 +313,29 @@ function jobIdForVideo(filename) {
   return row ? row.id : null;
 }
 
+function recordUsage(jobId, provider, operation, chars = 0) {
+  db.prepare('INSERT INTO usage_events (job_id, provider, operation, chars) VALUES (?, ?, ?, ?)').run(
+    jobId || null,
+    provider,
+    operation,
+    Math.max(0, Math.round(Number(chars) || 0)),
+  );
+}
+
+function usageSummary() {
+  const totals = db
+    .prepare('SELECT provider, operation, COUNT(*) AS calls, SUM(chars) AS chars FROM usage_events GROUP BY provider, operation ORDER BY provider, operation')
+    .all();
+  const recent = db
+    .prepare(
+      `SELECT u.id, u.job_id, u.provider, u.operation, u.chars, u.created_at, j.filename
+         FROM usage_events u LEFT JOIN jobs j ON j.id = u.job_id
+        ORDER BY u.id DESC LIMIT 50`,
+    )
+    .all();
+  return { totals, recent };
+}
+
 module.exports = {
   DB_PATH,
   createJob,
@@ -317,6 +350,8 @@ module.exports = {
   recordDownload,
   jobIdForVideo,
   listDownloads,
+  recordUsage,
+  usageSummary,
   replaceSubtitles,
   setRenderStatus,
 };

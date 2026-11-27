@@ -14,6 +14,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const crypto = require('node:crypto');
 const db = require('./db');
 const fonts = require('./fonts');
+const settings = require('./settings');
 require('dotenv').config();
 
 // 任务队列系统
@@ -453,11 +454,20 @@ setInterval(() => {
 const taskQueue = new TaskQueue(2); // 初始并发数
 
 // API密钥配置（从环境变量读取）
-const VOLC_API_KEY = process.env.VOLC_API_KEY || ''; // 火山引擎API密钥（用于翻译和语音识别）
-const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY || ''; // 豆包大模型API密钥
-const VOLC_APP_ID = process.env.VOLC_APP_ID || ''; // 火山引擎APP ID（语音识别和自动打轴API）
-const VOLC_ACCESS_TOKEN = process.env.VOLC_ACCESS_TOKEN || ''; // 火山引擎访问令牌（语音识别和自动打轴API）
-const DOUBAO_MODEL = process.env.DOUBAO_MODEL || 'doubao-seed-2-0-pro-260215'; // 豆包模型名称
+let VOLC_API_KEY = ''; // 火山引擎API密钥
+let DOUBAO_API_KEY = ''; // 豆包大模型API密钥
+let VOLC_APP_ID = ''; // 火山引擎APP ID
+let VOLC_ACCESS_TOKEN = ''; // 火山引擎访问令牌
+let DOUBAO_MODEL = 'doubao-seed-2-0-pro-260215'; // 豆包模型名称
+
+function refreshCredentials() {
+  VOLC_API_KEY = settings.get('volcApiKey');
+  DOUBAO_API_KEY = settings.get('doubaoApiKey');
+  VOLC_APP_ID = settings.get('volcAppId');
+  VOLC_ACCESS_TOKEN = settings.get('volcAccessToken');
+  DOUBAO_MODEL = settings.get('doubaoModel') || 'doubao-seed-2-0-pro-260215';
+}
+refreshCredentials();
 
 // 配置验证
 function validateConfig() {
@@ -652,6 +662,26 @@ function normalizeStyle(input) {
 }
 
 const fontUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } });
+
+app.get('/api/settings', (req, res) => {
+  res.json({ success: true, settings: settings.masked() });
+});
+
+app.put('/api/settings', (req, res) => {
+  const body = req.body || {};
+  const patch = {};
+  for (const key of settings.ALLOWED) {
+    if (key in body) patch[key] = body[key];
+  }
+  const masked = settings.update(patch);
+  refreshCredentials();
+  res.json({ success: true, settings: masked });
+});
+
+app.get('/api/usage', (req, res) => {
+  const summary = db.usageSummary();
+  res.json({ success: true, summary: summary.totals, recent: summary.recent });
+});
 
 app.get('/api/fonts', (req, res) => {
   res.json({ success: true, fonts: fonts.listFonts() });
@@ -1351,6 +1381,11 @@ const translateSubtitlesWithLLM = async (subtitles, targetLanguage, sourceLangua
     }
 
     allTranslated.push(...translatedArray);
+    try {
+      db.recordUsage(currentJobId(), 'doubao', 'translate', batchText.length);
+    } catch (error) {
+      console.error('记录翻译用量失败:', error.message);
+    }
     console.log(`第 ${batchIdx + 1} 批完成：${translatedArray.length} 条`);
   }
 
@@ -1922,6 +1957,12 @@ const processVideoChunk = async (chunkPath, sourceLanguage, targetLanguage, subt
     // 步骤1：语音识别生成带时间轴的字幕
     const subtitles = await speechToTextWithTimestamps(audioPath, sourceLanguage);
     console.log(`ASR识别结果: ${subtitles.length} 条字幕`);
+    try {
+      const chars = subtitles.reduce((sum, item) => sum + String(item.text || '').length, 0);
+      db.recordUsage(currentJobId(), 'volc', 'asr', chars);
+    } catch (error) {
+      console.error('记录识别用量失败:', error.message);
+    }
     if (subtitles.length > 0) {
       console.log(`首条字幕: ${subtitles[0].start_time}ms-${subtitles[0].end_time}ms "${subtitles[0].text}"`);
     }
@@ -2143,6 +2184,12 @@ async function runTranslationJob(jobId, videoPath, options) {
             sendProgress('语音识别', 30, '开始语音识别');
             subtitles = await speechToTextWithTimestamps(audioPath, sourceLanguage);
             sendProgress('语音识别', 40, `字幕生成成功，生成${subtitles.length}个字幕片段`);
+            try {
+              const chars = subtitles.reduce((sum, item) => sum + String(item.text || '').length, 0);
+              db.recordUsage(currentJobId(), 'volc', 'asr', chars);
+            } catch (error) {
+              console.error('记录识别用量失败:', error.message);
+            }
             steps.push({ name: 'speech_recognition', status: 'success', message: `字幕生成成功，生成${subtitles.length}个字幕片段` });
           } catch (error) {
             sendProgress('语音识别', 30, `字幕生成失败: ${error.message}`);
@@ -2433,6 +2480,11 @@ app.post('/api/jobs/:id/render', (req, res) => {
       await safeUnlink(subtitlePath);
       db.updateJob(job.id, { videoUrl: `/uploads/${path.basename(outputPath)}` });
       db.setRenderStatus(job.id, 'done');
+      try {
+        db.recordUsage(job.id, 'ffmpeg', 'render', 0);
+      } catch (error) {
+        console.error('记录合成用量失败:', error.message);
+      }
       console.log(`任务 ${job.id} 字幕重新合成完成`);
     } catch (error) {
       console.error(`任务 ${job.id} 重新合成失败:`, error.message);

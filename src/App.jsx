@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import VideoStudio from './components/VideoStudio'
 import HistoryView from './components/HistoryView'
+import SettingsView from './components/SettingsView'
 
 /** 顶栏时间码：让界面有一点“正在录制”的现场感，不影响功能 */
 function useTimecode() {
@@ -65,6 +66,13 @@ function App() {
           >
             历史记录
           </button>
+          <button
+            type="button"
+            className={`topbar-link ${view === 'settings' ? 'is-active' : ''}`}
+            onClick={() => setView(view === 'settings' ? 'workbench' : 'settings')}
+          >
+            设置
+          </button>
           <span className="rec-timecode" aria-hidden="true">
             <span className="rec-dot" />
             TC {timecode}
@@ -110,7 +118,13 @@ function App() {
       </header>
 
       <div className="shell-body">
-        {view === 'history' ? <HistoryView onBack={() => setView('workbench')} /> : <VideoStudio />}
+        {view === 'history' ? (
+          <HistoryView onBack={() => setView('workbench')} />
+        ) : view === 'settings' ? (
+          <SettingsView onBack={() => setView('workbench')} />
+        ) : (
+          <VideoStudio />
+        )}
       </div>
 
       <footer className="statusbar">
