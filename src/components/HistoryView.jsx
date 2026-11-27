@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './HistoryView.css'
-import SubtitleList from './SubtitleList'
+import SubtitleEditor from './SubtitleEditor'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -254,26 +254,18 @@ function HistoryView({ onBack }) {
                   }}
                 />
               </div>
-              <div className="editor-subs">
-                <div className="editor-subs-head">
-                  <span className="panel-title">字幕</span>
-                  {subtitles.length > 0 && (
-                    <a className="btn btn-quiet" href={`${API_URL}/api/jobs/${detail.id}/subtitles.srt`} download>
-                      下载 SRT
-                    </a>
-                  )}
-                </div>
-                <SubtitleList
-                  subtitles={subtitles}
-                  activeIndex={activeSub}
-                  onSeek={(item) => {
-                    const video = videoRef.current
-                    if (!video) return
-                    video.currentTime = Math.max(0, (Number(item.start_ms) || 0) / 1000)
-                    if (video.paused) video.play().catch(() => {})
-                  }}
-                />
-              </div>
+              <SubtitleEditor
+                jobId={detail.id}
+                subtitles={subtitles}
+                activeIndex={activeSub}
+                onSeek={(item) => {
+                  const video = videoRef.current
+                  if (!video) return
+                  video.currentTime = Math.max(0, (Number(item.start_ms) || 0) / 1000)
+                  if (video.paused) video.play().catch(() => {})
+                }}
+                onSaved={setSubtitles}
+              />
             </div>
           )}
 

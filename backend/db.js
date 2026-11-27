@@ -63,6 +63,9 @@ const columns = db.prepare('PRAGMA table_info(jobs)').all().map((row) => row.nam
 if (!columns.includes('source_path')) {
   db.exec('ALTER TABLE jobs ADD COLUMN source_path TEXT');
 }
+if (!columns.includes('subtitles_updated_at')) {
+  db.exec('ALTER TABLE jobs ADD COLUMN subtitles_updated_at TEXT');
+}
 if (!columns.includes('subtitle_url')) {
   db.exec('ALTER TABLE jobs ADD COLUMN subtitle_url TEXT');
 }
@@ -222,6 +225,44 @@ function listSubtitles(jobId) {
     .all(jobId);
 }
 
+function replaceSubtitles(jobId, subtitles = []) {
+  const previous = db
+    .prepare('SELECT sequence, ai_translated_text FROM translations WHERE job_id = ?')
+    .all(jobId);
+  const aiBySequence = new Map(previous.map((row) => [row.sequence, row.ai_translated_text]));
+
+  const insert = db.prepare(`
+    INSERT INTO translations
+      (job_id, sequence, start_ms, end_ms, source_text, translated_text, ai_translated_text, is_edited, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `);
+
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM translations WHERE job_id = ?').run(jobId);
+    subtitles.forEach((item, index) => {
+      const aiText = aiBySequence.get(index + 1) || item.translated_text || '';
+      insert.run(
+        jobId,
+        index + 1,
+        Math.round(item.start_ms),
+        Math.round(item.end_ms),
+        item.source_text || null,
+        item.translated_text || '',
+        aiText,
+        aiText === item.translated_text ? 0 : 1,
+      );
+    });
+    db.prepare("UPDATE jobs SET subtitles_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(jobId);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return listSubtitles(jobId);
+}
+
 module.exports = {
   DB_PATH,
   createJob,
@@ -233,4 +274,5 @@ module.exports = {
   addSteps,
   addTranslations,
   listSubtitles,
+  replaceSubtitles,
 };

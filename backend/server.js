@@ -2265,6 +2265,68 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json({ success: true, job });
 });
 
+app.put('/api/jobs/:id/subtitles', (req, res) => {
+  const job = db.getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+
+  const incoming = req.body && req.body.subtitles;
+  if (!Array.isArray(incoming) || incoming.length === 0) {
+    return res.status(400).json({ success: false, error: '至少保留一条字幕' });
+  }
+  if (incoming.length > 2000) {
+    return res.status(400).json({ success: false, error: '字幕条数超过上限（2000）' });
+  }
+
+  const cleaned = [];
+  for (let index = 0; index < incoming.length; index += 1) {
+    const item = incoming[index] || {};
+    const start = Number(item.start_ms);
+    const end = Number(item.end_ms);
+    const text = String(item.translated_text || '').trim();
+    const label = `第 ${index + 1} 条`;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+      return res.status(400).json({ success: false, error: `${label}时间码无效` });
+    }
+    if (start < 0) {
+      return res.status(400).json({ success: false, error: `${label}开始时间不能为负` });
+    }
+    if (end <= start) {
+      return res.status(400).json({ success: false, error: `${label}结束时间必须晚于开始时间` });
+    }
+    if (!text) {
+      return res.status(400).json({ success: false, error: `${label}译文不能为空` });
+    }
+
+    cleaned.push({
+      start_ms: Math.round(start),
+      end_ms: Math.round(end),
+      translated_text: text,
+      source_text: item.source_text || null
+    });
+  }
+
+  cleaned.sort((a, b) => a.start_ms - b.start_ms);
+
+  let adjusted = 0;
+  for (let index = 0; index < cleaned.length - 1; index += 1) {
+    if (cleaned[index].end_ms > cleaned[index + 1].start_ms) {
+      cleaned[index].end_ms = Math.max(cleaned[index].start_ms + 100, cleaned[index + 1].start_ms - 50);
+      adjusted += 1;
+    }
+  }
+
+  try {
+    const subtitles = db.replaceSubtitles(job.id, cleaned);
+    res.json({ success: true, subtitles, adjusted });
+  } catch (error) {
+    console.error('保存字幕失败:', error);
+    res.status(500).json({ success: false, error: '保存字幕失败' });
+  }
+});
+
 app.get('/api/jobs/:id/subtitles', (req, res) => {
   const job = db.getJob(req.params.id);
   if (!job) {

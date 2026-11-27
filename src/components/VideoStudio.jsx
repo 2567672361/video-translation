@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './VideoStudio.css'
-import SubtitleList from './SubtitleList'
+import SubtitleEditor from './SubtitleEditor'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -576,17 +576,13 @@ function VideoStudio() {
                     onError={() => setError('视频预览加载失败，可直接下载查看。')}
                   />
                 </div>
-                <div className="editor-subs">
-                  <div className="editor-subs-head">
-                    <span className="panel-title">字幕</span>
-                    {jobId && (
-                      <a className="btn btn-quiet" href={`${API_URL}/api/jobs/${jobId}/subtitles.srt`} download>
-                        下载 SRT
-                      </a>
-                    )}
-                  </div>
-                  <SubtitleList subtitles={subtitles} activeIndex={activeSub} onSeek={seekToSubtitle} />
-                </div>
+                <SubtitleEditor
+                  jobId={jobId}
+                  subtitles={subtitles}
+                  activeIndex={activeSub}
+                  onSeek={seekToSubtitle}
+                  onSaved={setSubtitles}
+                />
               </div>
             )}
 
