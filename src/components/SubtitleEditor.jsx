@@ -44,6 +44,8 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
   const [selected, setSelected] = useState(-1)
   const [editing, setEditing] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const [insertStart, setInsertStart] = useState('')
+  const [insertDuration, setInsertDuration] = useState('2')
 
   useEffect(() => {
     setRows(baseline)
@@ -83,9 +85,9 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     return ends.length > 0 ? Math.max(...ends) : 1
   }, [rows])
 
-  const insertCue = (startMs) => {
+  const insertCue = (startMs, durationMs = 2000) => {
     const start = Math.max(0, Math.round(Number(startMs) || 0))
-    const end = start + 2000
+    const end = start + Math.max(200, Math.round(Number(durationMs) || 2000))
     const row = {
       start_text: formatMs(start),
       end_text: formatMs(end),
@@ -103,10 +105,27 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     onSeek?.({ start_ms: start })
   }
 
+  const applyInsert = () => {
+    const start = insertStart.trim() ? parseMs(insertStart) : Math.round(currentTimeMs)
+    if (Number.isNaN(start)) {
+      setError('起点格式应为 mm:ss.mmm')
+      return
+    }
+    const seconds = insertDuration.trim() ? Number(insertDuration) : 2
+    if (!Number.isFinite(seconds) || seconds < 0.2) {
+      setError('字幕时长至少 0.2 秒')
+      return
+    }
+    insertCue(start, Math.round(seconds * 1000))
+    setInsertStart(formatMs(start))
+  }
+
   const insertAtPointer = (event) => {
     const rect = event.currentTarget.getBoundingClientRect()
     const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
-    insertCue(ratio * timelineTotal)
+    const at = Math.round(ratio * timelineTotal)
+    setInsertStart(formatMs(at))
+    insertCue(at, Math.round((Number(insertDuration) || 2) * 1000))
   }
 
   const selectedRow = selected >= 0 ? rows[selected] : null
@@ -328,8 +347,32 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
               {level}x
             </button>
           ))}
-          <button type="button" className="btn btn-quiet" onClick={() => insertCue(currentTimeMs)}>
-            ＋ 插入字幕
+          <span className="sub-shift-label">插入</span>
+          <input
+            className="sub-search-input mono"
+            placeholder="起点 mm:ss.mmm"
+            value={insertStart}
+            onChange={(event) => setInsertStart(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') applyInsert()
+            }}
+            aria-label="插入字幕起点"
+          />
+          <button type="button" className="btn btn-quiet" onClick={() => setInsertStart(formatMs(currentTimeMs))}>
+            取当前
+          </button>
+          <input
+            className="sub-search-input mono"
+            placeholder="时长(秒)"
+            value={insertDuration}
+            onChange={(event) => setInsertDuration(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') applyInsert()
+            }}
+            aria-label="插入字幕时长"
+          />
+          <button type="button" className="btn btn-quiet" onClick={applyInsert}>
+            ＋ 插入
           </button>
           <span className="sub-timeline-hint mono">共 {Math.max(rows.length, 1)} 条 · 总长 {formatMs(timelineTotal)}</span>
         </div>

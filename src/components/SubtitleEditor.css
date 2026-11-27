@@ -356,3 +356,20 @@
   border-color: rgba(242, 181, 68, 0.55);
   background: rgba(242, 181, 68, 0.06);
 }
+
+/* 插入字幕的时间输入 */
+.sub-search-input {
+  width: 96px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ink-2);
+  color: var(--paper);
+  font-size: 11px;
+  text-align: center;
+}
+
+.sub-search-input:focus {
+  outline: none;
+  border-color: var(--amber);
+}
