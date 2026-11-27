@@ -42,6 +42,7 @@ function HistoryView({ onBack }) {
   const videoRef = useRef(null)
   const [overlayEl, setOverlayEl] = useState(null)
   const [playing, setPlaying] = useState(false)
+  const [currentMs, setCurrentMs] = useState(0)
   const [busyId, setBusyId] = useState(null)
 
   const load = useCallback(async () => {
@@ -253,6 +254,7 @@ function HistoryView({ onBack }) {
                     const video = videoRef.current
                     if (!video) return
                     const ms = video.currentTime * 1000
+                    setCurrentMs(ms)
                     const index = subtitles.findIndex((item) => ms >= (item.start_ms || 0) && ms < (item.end_ms || 0))
                     setActiveSub((prev) => (prev === index ? prev : index))
                   }}
@@ -273,6 +275,7 @@ function HistoryView({ onBack }) {
                 onRendered={(url) => setDetail((prev) => (prev ? { ...prev, video_url: url } : prev))}
                 overlayHost={overlayEl}
                 isPlaying={playing}
+                currentTimeMs={currentMs}
               />
             </div>
           )}

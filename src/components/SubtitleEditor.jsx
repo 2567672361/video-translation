@@ -31,7 +31,7 @@ const toRows = (subtitles) =>
 /**
  * 字幕编辑器：行内改译文与时间码，整批保存。
  */
-function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, onRendered, overlayHost, isPlaying = false }) {
+function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, onRendered, overlayHost, isPlaying = false, currentTimeMs = 0 }) {
   const baseline = useMemo(() => toRows(subtitles), [subtitles])
   const [rows, setRows] = useState(baseline)
   const [message, setMessage] = useState(null)
@@ -59,7 +59,10 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     if (renderTimer.current) clearTimeout(renderTimer.current)
   }, [])
 
-  const dirtyIndexes = rows.reduce((list, row, index) => {
+  const structureChanged = rows.length !== baseline.length
+  const dirtyIndexes = structureChanged
+    ? rows.map((_, index) => index)
+    : rows.reduce((list, row, index) => {
     const base = baseline[index]
     if (!base) return list
     if (row.translated_text !== base.translated_text || row.start_text !== base.start_text || row.end_text !== base.end_text) {
@@ -79,6 +82,32 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
     const ends = rows.map((row) => parseMs(row.end_text)).filter((value) => Number.isFinite(value) && value > 0)
     return ends.length > 0 ? Math.max(...ends) : 1
   }, [rows])
+
+  const insertCue = (startMs) => {
+    const start = Math.max(0, Math.round(Number(startMs) || 0))
+    const end = start + 2000
+    const row = {
+      start_text: formatMs(start),
+      end_text: formatMs(end),
+      translated_text: '',
+      ai_text: '',
+      source_text: '',
+    }
+    let position = rows.findIndex((item) => (parseMs(item.start_text) || 0) > start)
+    if (position < 0) position = rows.length
+    setRows((prev) => [...prev.slice(0, position), row, ...prev.slice(position)])
+    setSelected(position)
+    setEditing(true)
+    setError(null)
+    setMessage(`已在 ${formatMs(start)} 插入字幕，填写后保存`)
+    onSeek?.({ start_ms: start })
+  }
+
+  const insertAtPointer = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
+    insertCue(ratio * timelineTotal)
+  }
 
   const selectedRow = selected >= 0 ? rows[selected] : null
 
@@ -299,10 +328,13 @@ function SubtitleEditor({ jobId, subtitles, activeIndex = -1, onSeek, onSaved, o
               {level}x
             </button>
           ))}
+          <button type="button" className="btn btn-quiet" onClick={() => insertCue(currentTimeMs)}>
+            ＋ 插入字幕
+          </button>
           <span className="sub-timeline-hint mono">共 {Math.max(rows.length, 1)} 条 · 总长 {formatMs(timelineTotal)}</span>
         </div>
         <div className="sub-timeline-scroll">
-          <div className="sub-timeline-track" style={{ width: `${zoom * 100}%` }}>
+          <div className="sub-timeline-track" style={{ width: `${zoom * 100}%` }} onDoubleClick={insertAtPointer}>
             {rows.map((row, index) => {
               const start = parseMs(row.start_text)
               const end = parseMs(row.end_text)

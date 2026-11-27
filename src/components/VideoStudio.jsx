@@ -87,6 +87,7 @@ function VideoStudio() {
   const videoRef = useRef(null)
   const [overlayEl, setOverlayEl] = useState(null)
   const [playing, setPlaying] = useState(false)
+  const [currentMs, setCurrentMs] = useState(0)
 
   const pollTimer = useRef(null)
   const activeJobId = useRef(null)
@@ -259,6 +260,7 @@ function VideoStudio() {
     const video = videoRef.current
     if (!video) return
     const ms = video.currentTime * 1000
+    setCurrentMs(ms)
     const index = subtitles.findIndex((item) => ms >= (item.start_ms || 0) && ms < (item.end_ms || 0))
     setActiveSub((prev) => (prev === index ? prev : index))
   }, [subtitles])
@@ -590,6 +592,7 @@ function VideoStudio() {
                   onRendered={(url) => setResult((prev) => (prev ? { ...prev, videoUrl: url } : prev))}
                   overlayHost={overlayEl}
                   isPlaying={playing}
+                  currentTimeMs={currentMs}
                 />
               </div>
             )}
