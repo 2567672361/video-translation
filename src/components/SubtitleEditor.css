@@ -457,3 +457,56 @@
   color: var(--coral);
   border-color: rgba(226, 104, 79, 0.5);
 }
+
+/* 布局修正：视频在上、编辑器占满整行，避免操作区被挤成竖排文字 */
+.editor-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-player {
+  max-width: 920px;
+}
+
+.sub-shift-label,
+.sub-timeline-toolbar,
+.sub-search {
+  white-space: nowrap;
+}
+
+.sub-timeline-toolbar,
+.sub-search {
+  flex-wrap: wrap;
+}
+
+.sub-row-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  justify-items: stretch;
+}
+
+.sub-row-actions .btn {
+  min-width: 0;
+  padding: 1px 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.sub-edit-row {
+  height: 86px;
+}
+
+/* 覆盖上一条 2x2 网格：四个操作按钮单行右对齐 */
+.sub-row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.sub-row-actions .btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
